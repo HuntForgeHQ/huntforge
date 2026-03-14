@@ -1,0 +1,70 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "owner": "Member 3 — Blue Team 1",
+    "description": "HuntForge tool fingerprint database. Each entry describes a recon tool's resource weight, detection risk, network behaviour, and defender visibility. Read by HFLogger._get_fingerprint() to enrich TOOL_START events. Also consumed by Member 4's dashboard tool browser.",
+    "fields": {
+      "weight":           "Orchestrator resource weight — 'light' | 'medium' | 'heavy'",
+      "detection_risk":   "How visible the tool is to a defender — 'none' | 'low' | 'medium' | 'high'",
+      "category":         "Phase this tool belongs to in the methodology",
+      "description":      "One-line summary of what the tool does",
+      "network_behavior": "What network activity the tool generates",
+      "defender_visibility": "What a Blue Team / SOC analyst would see",
+      "evasion_notes":    "Red Team tips to reduce detection (educational)"
+    }
+  },
+
+  "subfinder": {
+    "weight": "light",
+    "detection_risk": "low",
+    "category": "passive_recon",
+    "description": "Passive subdomain enumeration — queries third-party APIs, never contacts the target directly.",
+    "network_behavior": {
+      "direct_target_contact": false,
+      "protocol": "HTTPS",
+      "queries_made_to": [
+        "virustotal.com",
+        "shodan.io",
+        "censys.io",
+        "crt.sh",
+        "alienvault.com",
+        "chaos.projectdiscovery.io"
+      ],
+      "dns_queries": "none to target directly",
+      "rate": "API-rate-limited by upstream sources"
+    },
+    "defender_visibility": {
+      "target_server_logs": "none — target is never directly contacted",
+      "dns_server_logs": "none",
+      "waf_detection": "not detectable by target WAF",
+      "ids_detection": "none — all traffic goes to public third-party APIs",
+      "splunk_query": "N/A — passive tool",
+      "snort_rule": "N/A — passive tool"
+    },
+    "evasion_notes": "Fully passive. No direct connection to target ever. Safe to run without scope concerns."
+  },
+
+  "httpx": {
+    "weight": "medium",
+    "detection_risk": "medium",
+    "category": "surface_intel",
+    "description": "HTTP probing tool — sends HTTP/HTTPS requests to a list of hosts to gather status codes, titles, tech stack, and TLS info.",
+    "network_behavior": {
+      "direct_target_contact": true,
+      "protocol": "HTTP/HTTPS",
+      "user_agent": "Mozilla/5.0 (compatible; httpx/1.x)",
+      "rate": "150 req/sec default (use -rate 50 for stealth)",
+      "request_patterns": "Single GET / per host — low-noise but leaves access log entries",
+      "ports_probed": [80, 443, 8080, 8443]
+    },
+    "defender_visibility": {
+      "target_server_logs": "LOW — one GET request per host, looks like normal browser traffic",
+      "dns_server_logs": "Resolver queries for each probed hostname",
+      "waf_detection": "LOW — single benign GET; most WAFs will not trigger",
+      "ids_detection": "LOW — no payload, no scan signature; may flag on volume if many hosts probed quickly",
+      "splunk_query": "index=web_logs useragent=\"*httpx*\" | stats count by src_ip",
+      "snort_rule": "alert http any any -> $HTTP_SERVERS any (msg:\"httpx probe\"; content:\"httpx\"; http_header; sid:1000010;)"
+    },
+    "evasion_notes": "Use -H 'User-Agent: Mozilla/5.0' to blend in. Lower -rate to 20 when probing sensitive targets. Pair with -random-agent for additional cover."
+  }
+}
