@@ -1,0 +1,44 @@
+FROM kalilinux/kali-rolling:latest
+
+# Prevent interactive prompts during apt install
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install core dependencies and apt-based offensive tools
+RUN apt-get update && apt-get install -y \
+    wget \
+    curl \
+    git \
+    jq \
+    python3 \
+    python3-pip \
+    golang \
+    nmap \
+    ffuf \
+    dirsearch \
+    wpscan \
+    gitleaks \
+    trufflehog \
+    && rm -rf /var/lib/apt/lists/*
+
+# Setup Go environment for ProjectDiscovery and tomnomnom tools
+ENV GOPATH=/root/go
+ENV PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+
+# Install Go-based bug bounty tools
+RUN go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest \
+    && go install -v github.com/owasp-amass/amass/v4/...@master \
+    && go install -v github.com/tomnomnom/assetfinder@latest \
+    && go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest \
+    && go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest \
+    && go install -v github.com/projectdiscovery/dnsx/cmd/dnsx@latest \
+    && go install -v github.com/projectdiscovery/katana/cmd/katana@latest \
+    && go install -v github.com/lc/gau/v2/cmd/gau@latest \
+    && go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest \
+    && go install -v github.com/hahwul/dalfox/v2@latest
+
+# Prepare output directory for volume mounting
+RUN mkdir -p /output
+WORKDIR /output
+
+# Keep the container running infinitely so the Windows host can run `docker exec` against it
+CMD ["tail", "-f", "/dev/null"]
