@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  huntforge-kali:
+    build:
+      context: .
+      dockerfile: Dockerfile.kali
+    container_name: huntforge-kali
+    # Host networking allows the tools to resolve DNS correctly and perform accurate port scans
+    network_mode: "host"
+    volumes:
+      # Mount the Windows host ./output dir into the container's /output dir
+      - ./output:/output
+    restart: unless-stopped

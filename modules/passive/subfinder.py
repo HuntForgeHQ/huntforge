@@ -1,84 +1,65 @@
 # modules/passive/subfinder.py
 # Author         : Member 2
-# Responsibility : Run subfinder, parse subdomains,
-#                  set tags on tag_manager.
+# Responsibility : Run subfinder, parse subdomains, set tags.
 # Inherits from  : BaseModule
-# Raises         : OutputParseError (its own output parsing)
+# Raises         : OutputParseError (its own parsing error)
 # Lets bubble    : BinaryNotFoundError, ToolTimeoutError,
-#                  ToolExecutionError → orchestrator catches these
+#                  ToolExecutionError, DockerNotRunningError
 # ------------------------------------------------------------
 
 import os
-from huntforge.core.base_module import BaseModule
-from core.exceptions  import EmptyOutputError, OutputParseError
+from modules.base_module import BaseModule
+from core.exceptions import EmptyOutputError, OutputParseError
 
 
-class Subfinder(BaseModule):
+class SubfinderModule(BaseModule):
 
-    def build_command(self, target: str, output_file: str) -> list:
+    def build_command(self, target: str, container_output_file: str) -> list:
         """
-        Builds the subfinder shell command.
-        Reads optional switches from self.config via self._cfg().
+        Builds the subfinder shell command to be run INSIDE the container.
         """
-        cmd = ['subfinder', '-d', target, '-o', output_file, '-silent']
+        cmd = ['subfinder', '-d', target, '-o', container_output_file, '-silent']
 
-        # Optional: recursive subdomain enumeration
         if self._cfg('recursive', default=False):
             cmd += ['-recursive']
 
-        # Optional: timeout per source (default 30s)
         cmd += ['-timeout', str(self._cfg('timeout', default=30))]
 
-        # Optional: limit number of results
         max_results = self._cfg('max_results')
         if max_results:
             cmd += ['-max-results', str(max_results)]
 
-        # Optional: specific sources only
         sources = self._cfg('sources')
         if sources:
             cmd += ['-sources', ','.join(sources)]
 
-        # Optional: number of threads
         cmd += ['-t', str(self._cfg('threads', default=10))]
 
         return cmd
 
-    def run(self, target: str, output_dir: str,
-            tag_manager, config: dict = None) -> dict:
+    def run(self, target: str, output_dir: str, tag_manager, config: dict = None) -> dict:
         """
         Runs subfinder against target.
-        Returns standard result dict.
         """
-        # Store config so _cfg() and build_command() can read it
-        self.config  = config or {}
-        output_file  = os.path.join(output_dir, 'raw', 'subfinder.txt')
+        self.config = config or {}
+        
+        # ── Output Path Mapping ──────────────────────────────────
+        # Windows Host Path: where the python script creates dirs and reads
+        # Container Path: where the tool writes inside Docker
+        host_output_file = os.path.join(output_dir, 'raw', 'subfinder.txt')
+        container_output_file = f"/{host_output_file.replace('\\', '/')}" 
+        
+        os.makedirs(os.path.dirname(host_output_file), exist_ok=True)
 
-        # ── Ensure output directory exists ───────────────────────
-        os.makedirs(os.path.dirname(output_file), exist_ok=True)
-
-        # ── Build and run the command ─────────────────────────────
-        command = self.build_command(target, output_file)
-
-        # _run_subprocess() handles:
-        #   BinaryNotFoundError  → subfinder not installed
-        #   ToolTimeoutError     → subfinder hung
-        #   ToolExecutionError   → subfinder bad exit code
-        # We do NOT catch these here.
-        # They bubble up to orchestrator automatically.
+        # ── Execution ──────────────────────────────────────────────
+        command = self.build_command(target, container_output_file)
         self._run_subprocess(command)
 
-        # ── Parse the output file ─────────────────────────────────
-        # We DO handle our own output parsing here.
-        # EmptyOutputError means subfinder found zero subdomains.
-        # That is completely normal — not a crash.
+        # ── Parsing ────────────────────────────────────────────────
         try:
-            content    = self._read_output_file(output_file)
+            content = self._read_output_file(host_output_file)
             subdomains = self._parse(content)
-
         except EmptyOutputError:
-            # Target has no subdomains — return empty results
-            # This is normal. Don't crash. Don't bubble.
             subdomains = []
 
         return {
@@ -88,63 +69,37 @@ class Subfinder(BaseModule):
         }
 
     def emit_tags(self, result: dict, tag_manager) -> None:
-        """
-        Sets tags based on what subfinder found.
-        Called by orchestrator after run() succeeds.
-        """
+        """Sets tags based on discovered subdomains."""
         if result['count'] == 0:
             return
 
         tag_manager.add(
             'has_subdomains',
-            confidence = 'high',
-            evidence   = result['results'][:5],
-            source     = 'subfinder'
+            confidence='high',
+            evidence=result['results'][:5],
+            source='subfinder'
         )
 
-        # Check for interesting subdomains
         subdomains = result['results']
-
-        if any('admin'   in s for s in subdomains):
-            tag_manager.add('has_admin_subdomain',
-                            confidence='medium', source='subfinder')
-
-        if any('api'     in s for s in subdomains):
-            tag_manager.add('has_api_subdomain',
-                            confidence='medium', source='subfinder')
-
-        if any('dev'     in s or 'staging' in s for s in subdomains):
-            tag_manager.add('has_dev_subdomain',
-                            confidence='medium', source='subfinder')
-
-        if any('mail'    in s for s in subdomains):
-            tag_manager.add('has_mail_subdomain',
-                            confidence='low', source='subfinder')
+        if any('admin' in s for s in subdomains):
+            tag_manager.add('has_admin_subdomain', confidence='medium', source='subfinder')
+        if any('api' in s for s in subdomains):
+            tag_manager.add('has_api_subdomain', confidence='medium', source='subfinder')
+        if any('dev' in s or 'staging' in s for s in subdomains):
+            tag_manager.add('has_dev_subdomain', confidence='medium', source='subfinder')
+        if any('mail' in s for s in subdomains):
+            tag_manager.add('has_mail_subdomain', confidence='low', source='subfinder')
 
     def estimated_requests(self) -> int:
         return 40
 
-    # ── Private helper ────────────────────────────────────────────
-
     def _parse(self, content: str) -> list:
-        """
-        Parse subfinder plain text output.
-        One subdomain per line.
-
-        Raises OutputParseError if content is completely unparseable.
-        In practice subfinder output is very simple so this
-        rarely triggers — but it's here for safety.
-        """
         try:
             subdomains = [
                 line.strip()
                 for line in content.splitlines()
-                if line.strip() and '.' in line  # basic sanity check
+                if line.strip() and '.' in line
             ]
             return subdomains
-
         except Exception as e:
-            raise OutputParseError(
-                f"Could not parse subfinder output: {e}",
-                tool = 'subfinder'
-            )
+            raise OutputParseError(f"Could not parse subfinder output: {e}", tool='subfinder')

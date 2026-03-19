@@ -1,252 +1,126 @@
-"""
-core/hf_logger.py — HuntForge Structured Event Logger
-Member 3 (Blue Team 1) — Logging & Detection
+# core/hf_logger.py
+# Author         : Member 3
+# Responsibility : Handle SIEM-compatible JSONL event logging and terminal output.
+# ------------------------------------------------------------
 
-Interface draft: method signatures only, no logic.
-
-Responsibilities:
-  - Writes human-readable colored terminal output (via loguru)
-  - Writes structured JSON event log (machine-readable, SIEM-compatible)
-    → output_dir/logs/scan_events.jsonl
-
-Event types emitted:
-  SCAN_START | SCAN_END | PHASE_START | PHASE_END |
-  TOOL_START | TOOL_COMPLETE | TOOL_SKIPPED | TOOL_ERROR | TAG_SET
-
-Called by:
-  - core/orchestrator.py  (Member 1)
-  - core/tag_manager.py   (Member 1)
-  - modules/base_module.py (Member 1)
-
-Consumed by:
-  - core/siem_formatter.py      (Member 3 — converts events to CEF/ECS)
-  - dashboard/app.py            (Member 4 — reads scan_events.jsonl)
-  - data/tool_fingerprints.json (Member 3 — enriches TOOL_START events)
-"""
-
-import json
 import os
+import json
 import time
 from datetime import datetime
-from typing import Any
-
 from loguru import logger
-
+from core.siem_formatter import SIEMFormatter
 
 class HFLogger:
     """
-    HuntForge's structured event logger.
-
-    Writes two outputs simultaneously:
-      1. Human-readable coloured terminal output  (via loguru)
-      2. Structured JSON event log per scan        (scan_events.jsonl)
+    Structured logger for HuntForge.
+    Writes machine-readable events to JSONL and formats human-readable
+    logs to the terminal via Loguru.
     """
 
-    def __init__(self, output_dir: str) -> None:
-        """
-        Initialise the logger for a single scan session.
+    def __init__(self, output_dir: str):
+        self.output_dir = output_dir
+        
+        # Load tool fingerprints database
+        # For this prototype we will load it directly if it exists
+        self.fingerprints = {}
+        target = os.path.join('data', 'tool_fingerprints.json')
+        if os.path.exists(target):
+            with open(target, 'r') as f:
+                self.fingerprints = json.load(f)
 
-        Sets up the JSONL output path at:
-            <output_dir>/logs/scan_events.jsonl
-        Creates the directory if it does not exist.
+        self.log_file = os.path.join(output_dir, 'logs', 'scan_events.jsonl')
+        os.makedirs(os.path.dirname(self.log_file), exist_ok=True)
+        
+        # Determine format (could be read from a global config file later)
+        self.siem_format = 'json'
 
-        Args:
-            output_dir: Root output directory for this scan
-                        (e.g. "output/example.com").
-        """
-        ...
+    def _write_event(self, event: dict):
+        event['timestamp'] = datetime.utcnow().isoformat() + "Z"
+        
+        # Apply SIEM Formatting
+        formatted = SIEMFormatter.format(event, self.siem_format)
+        
+        with open(self.log_file, 'a') as f:
+            f.write(formatted + '\n')
 
-    # ── Scan Lifecycle ────────────────────────────────────────────────
+    def _enrich_tool(self, tool_name: str) -> dict:
+        """Adds detection risk and visibility metrics to the log."""
+        fp = self.fingerprints.get(tool_name, {})
+        return {
+            "detection_risk": fp.get("detection_risk", "unknown"),
+            "defender_visibility": fp.get("defender_visibility", "unknown"),
+            "category": fp.get("category", "unknown")
+        }
 
-    def scan_start(self, domain: str) -> None:
-        """
-        Record the beginning of a full HuntForge scan.
+    # ── Scan Level Events ────────────────────────────────────────
 
-        Emits event: SCAN_START
-        Logs:  INFO  "[HuntForge] Scan started: <domain>"
+    def scan_start(self, domain: str):
+        self._write_event({
+            "event_type": "scan_start",
+            "domain": domain,
+            "status": "started"
+        })
 
-        Args:
-            domain: Target domain being scanned (e.g. "example.com").
-        """
-        ...
+    def scan_end(self, final_tags: dict):
+        self._write_event({
+            "event_type": "scan_end",
+            "status": "complete",
+            "tags": list(final_tags.keys())
+        })
 
-    def scan_end(self, final_tags: dict[str, Any]) -> None:
-        """
-        Record the completion of a full scan and summarise results.
+    # ── Phase Level Events ───────────────────────────────────────
 
-        Emits event: SCAN_END  (includes total duration + final tag set)
-        Logs:  SUCCESS  "[HuntForge] Scan complete in <human_duration>"
+    def phase_start(self, phase_name: str, label: str):
+        self._write_event({
+            "event_type": "phase_start",
+            "phase": phase_name,
+            "label": label,
+            "status": "started"
+        })
 
-        Args:
-            final_tags: Dict of all tags collected during the scan,
-                        as returned by TagManager.all().
-        """
-        ...
+    def phase_end(self, phase_name: str):
+        self._write_event({
+            "event_type": "phase_end",
+            "phase": phase_name,
+            "status": "complete"
+        })
 
-    # ── Phase Lifecycle ───────────────────────────────────────────────
+    # ── Tool Level Events ────────────────────────────────────────
 
-    def phase_start(self, phase_name: str, label: str) -> None:
-        """
-        Record the start of a methodology phase.
+    def tool_start(self, tool_name: str):
+        event = {
+            "event_type": "tool_start",
+            "tool": tool_name,
+            "status": "started"
+        }
+        event.update(self._enrich_tool(tool_name))
+        self._write_event(event)
 
-        Emits event: PHASE_START
-        Logs:  INFO  "[Phase] ── <label> ──────────────"
+    def tool_complete(self, tool_name: str, findings_count: int):
+        event = {
+            "event_type": "tool_complete",
+            "tool": tool_name,
+            "status": "success",
+            "findings": findings_count
+        }
+        event.update(self._enrich_tool(tool_name))
+        self._write_event(event)
 
-        Args:
-            phase_name: Internal phase key from methodology YAML
-                        (e.g. "passive_recon").
-            label:      Human-readable phase label
-                        (e.g. "Passive Reconnaissance").
-        """
-        ...
+    def tool_skipped(self, tool_name: str, reason: str):
+        event = {
+            "event_type": "tool_skipped",
+            "tool": tool_name,
+            "status": "skipped",
+            "reason": reason
+        }
+        self._write_event(event)
 
-    def phase_end(self, phase_name: str) -> None:
-        """
-        Record the end of a methodology phase and its duration.
-
-        Emits event: PHASE_END  (includes duration since phase_start)
-        Logs:  INFO  "[Phase] <phase_name> done in <duration>s"
-
-        Args:
-            phase_name: Internal phase key — must match a prior phase_start call.
-        """
-        ...
-
-    # ── Tool Lifecycle ────────────────────────────────────────────────
-
-    def tool_start(self, tool_name: str) -> None:
-        """
-        Record that a recon tool is about to execute.
-
-        Looks up tool_fingerprints.json to include weight and
-        detection_risk metadata in the event payload.
-
-        Emits event: TOOL_START  (includes weight, detection_risk from fingerprint DB)
-        Logs:  INFO  "  [Tool] Starting: <tool_name>"
-
-        Args:
-            tool_name: Module-level tool identifier (e.g. "subfinder").
-        """
-        ...
-
-    def tool_complete(self, tool_name: str, count: int) -> None:
-        """
-        Record successful completion of a tool and its result count.
-
-        Emits event: TOOL_COMPLETE  (includes result count, elapsed duration)
-        Logs:  SUCCESS  "  [Tool] <tool_name>: <count> results in <duration>s"
-
-        Args:
-            tool_name: Must match a prior tool_start call.
-            count:     Number of results returned by the tool
-                       (e.g. len(instance.results)).
-        """
-        ...
-
-    def tool_skipped(self, tool_name: str, reason: str) -> None:
-        """
-        Record that a tool was intentionally skipped before execution.
-
-        Called by orchestrator when any of the 4-gate checks fail
-        (tag condition, efficiency filter, or budget limit).
-
-        Emits event: TOOL_SKIPPED  (includes skip reason string)
-        Logs:  DEBUG  "  [Skip] <tool_name> — <reason>"
-
-        Args:
-            tool_name: Tool that was skipped.
-            reason:    Human-readable skip reason, e.g.:
-                         "tag=cdn_detected conf=None < required=medium"
-                         "efficiency_filter: data already sufficient"
-                         "budget_exceeded"
-        """
-        ...
-
-    def tool_error(self, tool_name: str, error: Exception) -> None:
-        """
-        Record an unhandled exception raised during tool execution.
-
-        Emits event: TOOL_ERROR  (includes str(error))
-        Logs:  ERROR  "  [Error] <tool_name>: <error>"
-
-        Args:
-            tool_name: Tool that raised the exception.
-            error:     The caught exception object.
-        """
-        ...
-
-    # ── Tag Events ────────────────────────────────────────────────────
-
-    def tag_set(self, tag: str, confidence: str, source: str) -> None:
-        """
-        Record that the tag manager has set or updated an intelligence tag.
-
-        Emits event: TAG_SET
-        Logs:  INFO  "  [Tag] <tag> = <confidence> (src:<source>)"
-
-        Args:
-            tag:        Tag name (e.g. "cdn_detected", "waf_present").
-            confidence: Confidence level string: "low" | "medium" | "high".
-            source:     What produced the tag
-                        (e.g. "passive_recon_completion", "subfinder").
-        """
-        ...
-
-    # ── Private Helpers ───────────────────────────────────────────────
-
-    def _write_event(self, event_type: str, data: dict[str, Any]) -> None:
-        """
-        Serialise and append one structured event to scan_events.jsonl.
-
-        Each line written is a self-contained JSON object:
-            {"event": "<EVENT_TYPE>", "ts": "<ISO-8601>", ...data fields}
-
-        Args:
-            event_type: String constant identifying the event
-                        (e.g. "TOOL_START", "PHASE_END").
-            data:       Dict of event-specific fields to merge into the record.
-        """
-        ...
-
-    def _ts(self) -> str:
-        """
-        Return current UTC time as an ISO-8601 string.
-
-        Returns:
-            e.g. "2025-06-01T14:32:05.123456"
-        """
-        ...
-
-    def _human_duration(self, seconds: float) -> str:
-        """
-        Convert a float duration in seconds to a human-readable string.
-
-        Examples:
-            3.5  → "3.5s"
-            90.0 → "1m 30s"
-
-        Args:
-            seconds: Elapsed time in seconds.
-
-        Returns:
-            Formatted string for display in log messages.
-        """
-        ...
-
-    def _get_fingerprint(self, tool_name: str) -> dict[str, Any]:
-        """
-        Look up a tool's metadata from data/tool_fingerprints.json.
-
-        Returns the fingerprint dict for the given tool if found,
-        otherwise returns an empty dict (callers must handle missing keys).
-
-        Used by tool_start() to attach weight and detection_risk to events.
-
-        Args:
-            tool_name: Tool identifier to look up.
-
-        Returns:
-            Dict with keys such as "weight", "detection_risk", "category", etc.
-            Empty dict if the tool is not registered in the fingerprint DB.
-        """
-        ...
+    def tool_error(self, tool_name: str, error: Exception):
+        event = {
+            "event_type": "tool_error",
+            "tool": tool_name,
+            "status": "failed",
+            "error": str(error),
+            "error_type": error.__class__.__name__
+        }
+        self._write_event(event)

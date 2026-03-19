@@ -1,0 +1,1195 @@
+# =============================================================================
+# HuntForge — default_methodology.yaml
+# =============================================================================
+# This is the default methodology. It runs all 7 phases in order.
+# Tags from each phase control which conditional tools run in later phases.
+# Phases themselves do NOT skip based on tags — that is what custom
+# methodologies are for. Tags only gate individual tools within a phase.
+#
+# HOW TAGS WORK:
+#   - always: true   → tool always runs regardless of tags
+#   - if_tag: <tag>  → tool only runs if that tag was set by a previous phase
+#
+# HOW CUSTOM COMMANDS WORK (custom_command):
+#   - If set, overrides the default command entirely
+#   - Use {domain} and {output_dir} as placeholders
+#   - Example: custom_command: "subfinder -d {domain} -silent -all -o {output_dir}/raw/subfinder.txt"
+#
+# HOW EXTRA ARGS WORK (extra_args):
+#   - Appended to the default command built by the tool module
+#   - Use this to add flags without replacing the whole command
+#   - Example: extra_args: "-timeout 10 -rate-limit 50"
+#
+# HOW DISABLED TOOLS WORK (enabled: false):
+#   - Set enabled: false to skip a specific tool without deleting it
+#
+# =============================================================================
+
+meta:
+  version: "1.0"
+  name: "Default Full Scan"
+  description: "Complete 7-phase adaptive recon. All phases run. Tags gate individual tools."
+  author: "HuntForge"
+  iterative: false          # v2 feature — Ebb & Flow mode
+  ai_guided: true           # AI reads tags to prioritize report sections
+
+
+# =============================================================================
+# GLOBAL DEFAULTS (inherited by all tools unless overridden per-tool)
+# =============================================================================
+
+global_defaults:
+  timeout: 300              # seconds per tool before force-kill
+  retries: 1                # retry count on failure (0 = no retry)
+  rate_limit: null          # requests/second — null means tool default
+  output_format: "txt"      # raw output format saved to output_dir/raw/
+  enabled: true             # tools inherit this — set false to disable globally
+
+
+# =============================================================================
+# PHASE 1 — PASSIVE RECON
+# Goal: Build the largest possible subdomain list with zero target interaction
+# Tags emitted: subdomain_list, has_subdomains, has_wildcard
+# =============================================================================
+
+phases:
+
+  phase_1_passive_recon:
+    label: "Passive Recon"
+    description: "Discover all subdomains passively. No target interaction."
+    parallel: true            # Phase 1 tools run in parallel (all passive, safe)
+    weight: light             # light = up to 4 parallel workers
+    depends_on: []            # first phase, no dependencies
+
+    output_files:
+      subdomains_raw:     "raw/phase1_subdomains_raw.txt"
+      subdomains_merged:  "processed/all_subdomains.txt"
+
+    tags_emitted:
+      subdomain_list:   "at least one subdomain was discovered"
+      has_subdomains:   "alias for subdomain_list (always set together)"
+      has_wildcard:     "wildcard DNS detected — affects brute-force reliability"
+
+    tools:
+
+      subfinder:
+        enabled: true
+        binary: "subfinder"
+        weight: light
+        timeout: 300
+        output_file: "raw/subfinder.txt"
+        default_flags: "-d {domain} -silent -all -recursive"
+        extra_args: ""
+        custom_command: null
+        config:
+          threads: 50
+          sources: "all"          # all = use every source subfinder supports
+          provider_config: null   # path to subfinder provider-config.yaml if you have API keys
+          # To use API keys: provider_config: "~/.config/subfinder/provider-config.yaml"
+
+      amass:
+        enabled: true
+        binary: "amass"
+        weight: heavy           # amass is slow and resource intensive
+        timeout: 600            # give amass more time
+        output_file: "raw/amass.txt"
+        default_flags: "enum -passive -d {domain} -o {output_file}"
+        extra_args: ""
+        custom_command: null
+        config:
+          mode: "passive"       # passive = no brute force
+          timeout_mins: 10
+
+      crtsh:
+        enabled: true
+        binary: null            # API call — no subprocess
+        weight: light
+        timeout: 60
+        output_file: "raw/crtsh.txt"
+        default_flags: null     # API module, no flags
+        extra_args: null
+        custom_command: null
+        config:
+          api_url: "https://crt.sh/?q=%.{domain}&output=json"
+          include_expired: false
+
+      theharvester:
+        enabled: true
+        binary: "theHarvester"
+        weight: light
+        timeout: 300
+        output_file: "raw/theharvester.txt"
+        default_flags: "-d {domain} -b all -f {output_file}"
+        extra_args: ""
+        custom_command: null
+        config:
+          sources: "all"        # or comma-separated: "google,bing,github,linkedin"
+          limit: 500            # max results per source
+
+      assetfinder:
+        enabled: true
+        binary: "assetfinder"
+        weight: light
+        timeout: 120
+        output_file: "raw/assetfinder.txt"
+        default_flags: "--subs-only {domain}"
+        extra_args: ""
+        custom_command: null
+
+      chaos:
+        enabled: true
+        binary: "chaos"
+        weight: light
+        timeout: 60
+        output_file: "raw/chaos.txt"
+        default_flags: "-d {domain} -silent -o {output_file}"
+        extra_args: ""
+        custom_command: null
+        config:
+          api_key: null         # set CHAOS_KEY env var or put key here
+
+      findomain:
+        enabled: true
+        binary: "findomain"
+        weight: light
+        timeout: 120
+        output_file: "raw/findomain.txt"
+        default_flags: "--target {domain} --quiet --output"
+        extra_args: ""
+        custom_command: null
+
+      waybackurls:
+        enabled: true
+        binary: "waybackurls"
+        weight: light
+        timeout: 120
+        output_file: "raw/waybackurls.txt"
+        default_flags: "{domain}"
+        extra_args: ""
+        custom_command: null
+        note: "Used in phase 1 for passive subdomain extraction from archived URLs"
+
+
+# =============================================================================
+# PHASE 2 — SECRETS & OSINT
+# Goal: Find leaked credentials and hidden assets. Can expand Phase 1 results.
+# Tags emitted: leaked_api_keys, leaked_credentials, hidden_subdomains,
+#               internal_endpoints, github_dorked
+# =============================================================================
+
+  phase_2_secrets_osint:
+    label: "Secrets & OSINT"
+    description: "Find leaked credentials, API keys, and hidden subdomains via OSINT."
+    parallel: true
+    weight: light
+    depends_on:
+      - phase_1_passive_recon
+
+    input_files:
+      subdomains:    "processed/all_subdomains.txt"
+
+    output_files:
+      secrets_found:           "processed/secrets_found.json"
+      subdomains_from_secrets: "raw/phase2_subdomains_from_secrets.txt"
+
+    tags_emitted:
+      leaked_api_keys:      "API keys or tokens found in repos or JS files"
+      leaked_credentials:   "usernames/passwords found in git history or files"
+      hidden_subdomains:    "new subdomains found via secrets that Phase 1 missed"
+      internal_endpoints:   "internal hostnames or IPs found in leaked data"
+      github_dorked:        "GitHub dorking completed successfully"
+      js_secrets_found:     "secrets found in JavaScript files"
+
+    tools:
+
+      gitleaks:
+        enabled: true
+        binary: "gitleaks"
+        weight: light
+        timeout: 300
+        output_file: "raw/gitleaks.json"
+        default_flags: "detect --source . --report-path {output_file} --no-git"
+        extra_args: ""
+        custom_command: null
+        config:
+          config_path: null     # path to custom gitleaks.toml if you have one
+          redact: false         # set true to redact secrets from output
+
+      trufflehog:
+        enabled: true
+        binary: "trufflehog"
+        weight: light
+        timeout: 300
+        output_file: "raw/trufflehog.json"
+        default_flags: "github --org={domain} --json > {output_file}"
+        extra_args: ""
+        custom_command: null
+        config:
+          only_verified: false  # set true to only report verified secrets
+          concurrency: 8
+
+      github_dorking:
+        enabled: true
+        binary: null            # custom Python module — no external binary
+        weight: light
+        timeout: 120
+        output_file: "raw/github_dorks.txt"
+        default_flags: null
+        extra_args: null
+        custom_command: null
+        config:
+          api_token: null       # set GITHUB_TOKEN env var or put token here
+          dorks:
+            - "{domain} password"
+            - "{domain} secret"
+            - "{domain} api_key"
+            - "{domain} token"
+            - "{domain} internal"
+            - "site:{domain} ext:env"
+            - "site:{domain} ext:yaml password"
+          max_results_per_dork: 10
+
+      secretfinder:
+        enabled: true
+        binary: "python3"
+        weight: light
+        timeout: 180
+        output_file: "raw/secretfinder.txt"
+        default_flags: "SecretFinder.py -i {domain} -o {output_file}"
+        extra_args: ""
+        custom_command: null
+        note: "Scans JS files for API keys, tokens, endpoints"
+
+      jsluice:
+        enabled: true
+        binary: "jsluice"
+        weight: light
+        timeout: 120
+        output_file: "raw/jsluice.json"
+        default_flags: "urls -R {domain}"
+        extra_args: ""
+        custom_command: null
+
+      linkfinder:
+        enabled: true
+        binary: "python3"
+        weight: light
+        timeout: 120
+        output_file: "raw/linkfinder.txt"
+        default_flags: "linkfinder.py -i https://{domain} -d -o {output_file}"
+        extra_args: ""
+        custom_command: null
+
+
+# =============================================================================
+# PHASE 3 — LIVE ASSET DISCOVERY
+# Goal: Determine which discovered assets are actually alive and what ports/services
+# Tags emitted: live_hosts_found, unusual_ports_detected, port_80_443_only,
+#               screenshots_taken
+# =============================================================================
+
+  phase_3_asset_discovery:
+    label: "Live Asset Discovery"
+    description: "Probe all discovered assets. Identify live hosts, open ports, grab screenshots."
+    parallel: false
+    weight: medium
+    depends_on:
+      - phase_1_passive_recon
+      - phase_2_secrets_osint
+
+    input_files:
+      subdomains_phase1:   "processed/all_subdomains.txt"
+      subdomains_secrets:  "raw/phase2_subdomains_from_secrets.txt"
+      # Orchestrator merges both input files before passing to tools
+
+    output_files:
+      live_hosts:        "processed/live_hosts.json"
+      open_ports:        "processed/open_ports.json"
+      screenshots_dir:   "raw/screenshots/"
+      dns_resolved:      "processed/dns_resolved.txt"
+
+    tags_emitted:
+      live_hosts_found:       "at least one live HTTP/HTTPS host found"
+      unusual_ports_detected: "ports other than 80/443 are open on live hosts"
+      port_80_443_only:       "all live hosts only serve on standard HTTP ports"
+      has_ipv6:               "IPv6 addresses detected"
+      screenshots_taken:      "visual screenshots of live hosts captured"
+      cdn_detected:           "CDN provider detected (Cloudflare, Fastly, etc)"
+
+    tools:
+
+      httpx:
+        enabled: true
+        binary: "httpx"
+        weight: medium
+        timeout: 300
+        output_file: "raw/httpx.json"
+        default_flags: "-l {input_file} -o {output_file} -json -silent -title -status-code -tech-detect -follow-redirects"
+        extra_args: ""
+        custom_command: null
+        config:
+          threads: 50
+          rate_limit: 150       # requests per second
+          timeout_per_host: 10  # seconds
+          follow_redirects: true
+          tech_detect: true     # enables -tech-detect flag automatically
+
+      dnsx:
+        enabled: true
+        binary: "dnsx"
+        weight: light
+        timeout: 180
+        output_file: "raw/dnsx.txt"
+        default_flags: "-l {input_file} -o {output_file} -silent -a -aaaa -cname -mx -txt"
+        extra_args: ""
+        custom_command: null
+        config:
+          resolvers: null       # path to custom resolvers file, null = use default
+          threads: 100
+          retry: 2
+
+      naabu:
+        enabled: true
+        binary: "naabu"
+        weight: medium
+        timeout: 300
+        output_file: "raw/naabu.txt"
+        default_flags: "-l {input_file} -o {output_file} -silent -top-ports 1000"
+        extra_args: ""
+        custom_command: null
+        config:
+          ports: "top-1000"     # or "full" for all 65535 (slow), or "80,443,8080,8443,8888"
+          rate: 1000
+          retries: 1
+
+      puredns:
+        enabled: true
+        binary: "puredns"
+        weight: light
+        timeout: 300
+        output_file: "raw/puredns.txt"
+        default_flags: "resolve {input_file} -o {output_file} --wildcard-tests 30"
+        extra_args: ""
+        custom_command: null
+        config:
+          resolvers: null       # path to resolvers file — highly recommended to use a good list
+          wildcard_tests: 30
+
+      gowitness:
+        enabled: true
+        binary: "gowitness"
+        weight: medium
+        timeout: 300
+        output_file: "raw/gowitness.db"
+        default_flags: "file -f {input_file} --screenshot-path {output_dir}/raw/screenshots/ --db-path {output_file}"
+        extra_args: ""
+        custom_command: null
+        config:
+          threads: 20
+          timeout_per_target: 10
+
+      asnmap:
+        enabled: true
+        binary: "asnmap"
+        weight: light
+        timeout: 60
+        output_file: "raw/asnmap.txt"
+        default_flags: "-d {domain} -silent -o {output_file}"
+        extra_args: ""
+        custom_command: null
+
+
+# =============================================================================
+# PHASE 4 — SURFACE INTELLIGENCE
+# Goal: Classify every live asset by type. Sets the tags that drive all
+#       conditional tool execution in Phases 5, 6, and 7.
+# Tags emitted: has_api, has_auth, has_cms, has_cloud_assets, has_graphql,
+#               has_login, has_admin, tech_stack_mapped
+# =============================================================================
+
+  phase_4_surface_intelligence:
+    label: "Surface Intelligence"
+    description: "Classify live assets. This phase's tags drive all conditional execution downstream."
+    parallel: false
+    weight: medium
+    depends_on:
+      - phase_3_asset_discovery
+
+    input_files:
+      live_hosts:   "processed/live_hosts.json"
+      open_ports:   "processed/open_ports.json"
+
+    output_files:
+      surface_map:     "processed/surface_intel.json"
+      tech_stack:      "processed/tech_stack.json"
+
+    # classifier.py reads all tool outputs and sets these tags
+    # based on detected signals (see classifier.py for full signal lists)
+    tags_emitted:
+      has_api:          "JSON responses, /api/ paths, swagger.json, or GraphQL detected"
+      has_graphql:      "GraphQL endpoint specifically detected (/graphql, introspection)"
+      has_auth:         "Login forms, /admin/, /login, OAuth, SSO, or JWT detected"
+      has_admin:        "Admin panel path detected (/admin, /dashboard, /panel)"
+      has_cms:          "WordPress, Drupal, Joomla, Magento fingerprint detected"
+      has_wordpress:    "WordPress specifically detected (wp-content, wp-login)"
+      has_cloud_assets: "S3 buckets, Azure Blob, GCP storage endpoints detected"
+      has_s3:           "Amazon S3 specifically detected"
+      has_azure_blob:   "Azure Blob Storage specifically detected"
+      has_java:         "Java application server detected (Tomcat, JBoss, Spring)"
+      has_php:          "PHP detected in headers or tech stack"
+      has_nodejs:       "Node.js/Express detected"
+      has_nginx:        "Nginx web server detected"
+      has_apache:       "Apache web server detected"
+      tech_stack_mapped: "Technology classification completed and saved"
+      has_cors:         "CORS misconfiguration or permissive CORS detected"
+      has_debug_mode:   "Debug mode or verbose error pages detected"
+
+    # Asset classification categories (used by classifier.py)
+    classifies_into:
+      api:
+        signals:
+          - "/api/"
+          - "/v1/"
+          - "/v2/"
+          - "/v3/"
+          - "/graphql"
+          - "application/json"
+          - "swagger.json"
+          - "openapi.json"
+          - "api-docs"
+          - "REST"
+          - "GraphQL"
+      authentication:
+        signals:
+          - "/login"
+          - "/signin"
+          - "/auth"
+          - "/oauth"
+          - "/sso"
+          - "/admin"
+          - "/dashboard"
+          - "Authorization: Bearer"
+          - "jwt"
+          - "session"
+      cms:
+        signals:
+          - "WordPress"
+          - "Drupal"
+          - "Joomla"
+          - "Magento"
+          - "wp-content"
+          - "wp-login"
+          - "wp-admin"
+          - "Typo3"
+          - "Shopify"
+      cloud:
+        signals:
+          - "s3.amazonaws.com"
+          - "blob.core.windows.net"
+          - "storage.googleapis.com"
+          - "cloudfront.net"
+          - "azurewebsites.net"
+          - "appspot.com"
+      static:
+        signals:
+          - "X-Cache: HIT"
+          - "CDN"
+          - "no server-side rendering"
+
+    tools:
+
+      whatweb:
+        enabled: true
+        binary: "whatweb"
+        weight: light
+        timeout: 180
+        output_file: "raw/whatweb.json"
+        default_flags: "-i {input_file} --log-json={output_file} -q"
+        extra_args: ""
+        custom_command: null
+        config:
+          aggression: 1         # 1=passive, 3=aggressive (use 1 for safety)
+          threads: 25
+
+      wappalyzer_cli:
+        enabled: true
+        binary: "wappalyzer"
+        weight: light
+        timeout: 180
+        output_file: "raw/wappalyzer.json"
+        default_flags: "{domain} --pretty"
+        extra_args: ""
+        custom_command: null
+        config:
+          timeout_per_host: 10
+
+      nmap_service:
+        enabled: true
+        binary: "nmap"
+        weight: heavy
+        timeout: 600
+        output_file: "raw/nmap.xml"
+        default_flags: "-sV -sC --open -oX {output_file} -iL {input_file}"
+        extra_args: ""
+        custom_command: null
+        config:
+          intensity: 5          # 1-9, higher = more probes, slower
+          # Only runs on hosts with unusual ports from Phase 3
+          # If port_80_443_only tag is set, nmap is skipped automatically
+          skip_if_port_80_443_only: true
+
+      shodan_cli:
+        enabled: false          # disabled by default — requires API key
+        binary: "shodan"
+        weight: light
+        timeout: 60
+        output_file: "raw/shodan.json"
+        default_flags: "host {domain} --save {output_file}"
+        extra_args: ""
+        custom_command: null
+        config:
+          api_key: null         # set SHODAN_API_KEY env var
+
+      censys_cli:
+        enabled: false          # disabled by default — requires API key
+        binary: "censys"
+        weight: light
+        timeout: 60
+        output_file: "raw/censys.json"
+        default_flags: "search {domain} --output-file {output_file}"
+        extra_args: ""
+        custom_command: null
+        config:
+          api_id: null          # set CENSYS_API_ID env var
+          api_secret: null      # set CENSYS_API_SECRET env var
+
+
+# =============================================================================
+# PHASE 5 — DEEP ENUMERATION
+# Goal: Discover all URLs, endpoints, parameters, and JavaScript secrets
+# Tags emitted: params_found, api_endpoints_found, js_files_found,
+#               graphql_introspected, large_endpoint_set
+# =============================================================================
+
+  phase_5_enumeration:
+    label: "Deep Enumeration"
+    description: "Crawl, archive, and extract all reachable endpoints and parameters."
+    parallel: false
+    weight: medium
+    depends_on:
+      - phase_4_surface_intelligence
+
+    input_files:
+      live_hosts:   "processed/live_hosts.json"
+      surface_map:  "processed/surface_intel.json"
+
+    output_files:
+      all_urls:        "processed/all_urls.txt"
+      parameters:      "processed/parameters.json"
+      js_files:        "processed/js_files.txt"
+      graphql_schema:  "processed/graphql_schema.json"
+
+    tags_emitted:
+      params_found:          "URL parameters discovered — enables dalfox and sqlmap in Phase 7"
+      api_endpoints_found:   "API endpoint paths enumerated"
+      js_files_found:        "JavaScript files discovered for further analysis"
+      graphql_introspected:  "GraphQL schema successfully introspected"
+      large_endpoint_set:    "more than 1000 unique endpoints discovered"
+      s3_buckets_found:      "S3 bucket URLs found during enumeration"
+
+    conditional_tools:
+
+      - tool: katana
+        always: true
+        binary: "katana"
+        weight: medium
+        timeout: 300
+        output_file: "raw/katana.txt"
+        default_flags: "-list {input_file} -o {output_file} -silent -jc -kf all -d 3"
+        extra_args: ""
+        custom_command: null
+        config:
+          depth: 3              # crawl depth
+          js_crawl: true        # crawl JavaScript files
+          headless: false       # set true for JS-heavy SPAs (slower)
+          concurrency: 10
+          rate_limit: 150
+
+      - tool: gau
+        always: true
+        binary: "gau"
+        weight: light
+        timeout: 300
+        output_file: "raw/gau.txt"
+        default_flags: "{domain} --o {output_file} --threads 5 --blacklist png,jpg,gif,svg,ico,css"
+        extra_args: ""
+        custom_command: null
+        config:
+          providers: "wayback,commoncrawl,otx,urlscan"
+          threads: 5
+
+      - tool: paramspider
+        always: true
+        binary: "python3"
+        weight: light
+        timeout: 180
+        output_file: "raw/paramspider.txt"
+        default_flags: "paramspider.py -d {domain} -o {output_file}"
+        extra_args: ""
+        custom_command: null
+
+      - tool: gospider
+        always: true
+        binary: "gospider"
+        weight: medium
+        timeout: 300
+        output_file: "raw/gospider.txt"
+        default_flags: "-s https://{domain} -o {output_dir}/raw/gospider/ -c 10 -d 3 -q"
+        extra_args: ""
+        custom_command: null
+        config:
+          concurrent: 10
+          depth: 3
+
+      - tool: gf_extract
+        always: true
+        binary: "gf"
+        weight: light
+        timeout: 60
+        output_file: "raw/gf_params.txt"
+        default_flags: "params {all_urls_file}"
+        extra_args: ""
+        custom_command: null
+        note: "Runs gf patterns on merged URL list to extract parameter-bearing URLs"
+        config:
+          patterns:
+            - "params"
+            - "lfi"
+            - "ssrf"
+            - "redirect"
+            - "sqli"
+            - "xss"
+            - "rce"
+
+      - tool: graphql_voyager
+        always: false
+        if_tag: "has_graphql"         # only if graphql endpoint detected in Phase 4
+        binary: null                  # custom module using requests
+        weight: light
+        timeout: 120
+        output_file: "raw/graphql_schema.json"
+        default_flags: null
+        extra_args: null
+        custom_command: null
+        config:
+          endpoint_paths:
+            - "/graphql"
+            - "/api/graphql"
+            - "/v1/graphql"
+            - "/query"
+          introspection_query: true
+
+      - tool: arjun
+        always: false
+        if_tag: "has_api"             # only if API detected in Phase 4
+        binary: "arjun"
+        weight: light
+        timeout: 180
+        output_file: "raw/arjun.json"
+        default_flags: "-u https://{domain} -oJ {output_file} -t 10"
+        extra_args: ""
+        custom_command: null
+        config:
+          threads: 10
+          wordlist: null        # null = use arjun default wordlist
+
+
+# =============================================================================
+# PHASE 6 — CONTENT DISCOVERY
+# Goal: Find hidden paths, admin panels, backup files, and exposed configs
+# Tags emitted: admin_panel_found, backup_files_found, api_docs_found,
+#               exposed_git, exposed_env, login_page_found
+# =============================================================================
+
+  phase_6_content_discovery:
+    label: "Content Discovery"
+    description: "Brute-force hidden paths, admin panels, backup files, exposed configs."
+    parallel: false
+    weight: heavy
+    depends_on:
+      - phase_4_surface_intelligence
+      - phase_5_enumeration
+
+    input_files:
+      live_hosts:  "processed/live_hosts.json"
+
+    output_files:
+      discovered_paths:   "processed/discovered_paths.json"
+      admin_paths:        "processed/admin_paths.txt"
+      backup_files:       "processed/backup_files.txt"
+
+    tags_emitted:
+      admin_panel_found:  "admin or dashboard path discovered"
+      backup_files_found: "backup or config files found (.bak, .old, .zip, etc)"
+      api_docs_found:     "API documentation page found (swagger, redoc, etc)"
+      exposed_git:        "exposed .git directory found"
+      exposed_env:        ".env file accessible"
+      exposed_config:     "config file accessible"
+      login_page_found:   "login form discovered during content discovery"
+      wp_xmlrpc_found:    "WordPress xmlrpc.php accessible"
+
+    conditional_tools:
+
+      - tool: ffuf
+        always: true
+        binary: "ffuf"
+        weight: heavy
+        timeout: 600
+        output_file: "raw/ffuf.json"
+        default_flags: "-u https://{domain}/FUZZ -w {wordlist} -o {output_file} -of json -mc 200,201,301,302,403 -t 50 -ac -s"
+        extra_args: ""
+        custom_command: null
+        config:
+          wordlist: "~/.huntforge/wordlists/raft-medium-directories.txt"
+          threads: 50
+          rate_limit: null      # null = no rate limit (be careful on prod targets)
+          match_codes: "200,201,204,301,302,307,401,403,405"
+          filter_size: null     # filter by response size to reduce noise
+
+      - tool: dirsearch
+        always: true
+        binary: "dirsearch"
+        weight: medium
+        timeout: 300
+        output_file: "raw/dirsearch.txt"
+        default_flags: "-u https://{domain} -o {output_file} -q --no-color"
+        extra_args: ""
+        custom_command: null
+        config:
+          threads: 30
+          extensions: "php,asp,aspx,jsp,html,js,json,txt,bak,zip,tar,gz"
+
+      - tool: feroxbuster
+        always: true
+        binary: "feroxbuster"
+        weight: heavy
+        timeout: 600
+        output_file: "raw/feroxbuster.txt"
+        default_flags: "--url https://{domain} --output {output_file} --quiet --auto-tune"
+        extra_args: ""
+        custom_command: null
+        config:
+          wordlist: null        # null = use feroxbuster default
+          threads: 50
+          depth: 3
+          status_codes: "200,204,301,302,307,308,401,403,405"
+
+      - tool: wpscan
+        always: false
+        if_tag: "has_cms"              # only if CMS detected in Phase 4
+        binary: "wpscan"
+        weight: medium
+        timeout: 300
+        output_file: "raw/wpscan_paths.json"
+        default_flags: "--url https://{domain} --output {output_file} --format json"
+        extra_args: ""
+        custom_command: null
+        config:
+          enumerate: "ap,at,tt,cb,dbe,u,m"   # plugins, themes, timthumbs, etc
+          api_token: null       # set WPSCAN_API_TOKEN env var for vuln data
+
+      - tool: s3scanner
+        always: false
+        if_tag: "has_cloud_assets"     # only if cloud storage detected in Phase 4
+        binary: "s3scanner"
+        weight: light
+        timeout: 120
+        output_file: "raw/s3scanner.txt"
+        default_flags: "scan --domains-file {input_file} --out-file {output_file}"
+        extra_args: ""
+        custom_command: null
+
+      - tool: cloud_enum
+        always: false
+        if_tag: "has_cloud_assets"     # only if cloud storage detected in Phase 4
+        binary: "python3"
+        weight: light
+        timeout: 180
+        output_file: "raw/cloud_enum.txt"
+        default_flags: "cloud_enum.py -k {domain} --logfile {output_file}"
+        extra_args: ""
+        custom_command: null
+        config:
+          providers:
+            - "aws"
+            - "azure"
+            - "gcp"
+
+
+# =============================================================================
+# PHASE 7 — VULNERABILITY SCANNING
+# Goal: Automated vulnerability detection across the full attack surface
+# Tags emitted: critical_found, high_found, medium_found, takeover_found,
+#               xss_found, sqli_found, ssrf_found, lfi_found
+# =============================================================================
+
+  phase_7_vuln_scan:
+    label: "Automated Vulnerability Scan"
+    description: "Run vulnerability scanners against the full enumerated attack surface."
+    parallel: false
+    weight: heavy
+    depends_on:
+      - phase_5_enumeration
+      - phase_6_content_discovery
+
+    input_files:
+      all_urls:          "processed/all_urls.txt"
+      parameters:        "processed/parameters.json"
+      live_hosts:        "processed/live_hosts.json"
+      discovered_paths:  "processed/discovered_paths.json"
+
+    output_files:
+      vulnerabilities:   "processed/vulnerabilities.json"
+      nuclei_results:    "raw/nuclei.json"
+      takeovers:         "processed/takeovers.txt"
+
+    tags_emitted:
+      critical_found:  "nuclei found critical severity vulnerability"
+      high_found:      "nuclei found high severity vulnerability"
+      medium_found:    "nuclei found medium severity vulnerability"
+      takeover_found:  "subdomain takeover detected by subjack or nuclei"
+      xss_found:       "reflected or DOM XSS found by dalfox"
+      sqli_found:      "SQL injection found by sqlmap"
+      ssrf_found:      "SSRF vulnerability detected by nuclei"
+      lfi_found:       "Local File Inclusion vulnerability detected"
+      open_redirect:   "open redirect vulnerability detected"
+      cors_bypass:     "CORS misconfiguration exploitable"
+
+    conditional_tools:
+
+      - tool: nuclei
+        always: true
+        binary: "nuclei"
+        weight: heavy
+        timeout: 1200
+        output_file: "raw/nuclei.json"
+        default_flags: "-l {input_file} -o {output_file} -json -silent"
+        extra_args: ""
+        custom_command: null
+        config:
+          templates: "cves,misconfigurations,exposures,takeovers,vulnerabilities"
+          severity: "critical,high,medium"
+          rate_limit: 150
+          concurrency: 25
+          bulk_size: 50
+          update_templates: true    # run nuclei -update-templates before scan
+
+      - tool: nuclei_cms
+        always: false
+        if_tag: "has_cms"            # only if CMS detected in Phase 4
+        binary: "nuclei"
+        weight: heavy
+        timeout: 600
+        output_file: "raw/nuclei_cms.json"
+        default_flags: "-l {input_file} -o {output_file} -json -silent -t cms"
+        extra_args: ""
+        custom_command: null
+        config:
+          templates: "cms"
+          severity: "critical,high,medium,low"
+
+      - tool: nuclei_auth
+        always: false
+        if_tag: "has_auth"           # only if auth pages detected in Phase 4
+        binary: "nuclei"
+        weight: medium
+        timeout: 300
+        output_file: "raw/nuclei_auth.json"
+        default_flags: "-l {input_file} -o {output_file} -json -silent -t default-logins,exposures/tokens"
+        extra_args: ""
+        custom_command: null
+
+      - tool: subjack
+        always: true
+        binary: "subjack"
+        weight: light
+        timeout: 300
+        output_file: "raw/subjack.txt"
+        default_flags: "-w {subdomains_file} -o {output_file} -ssl -timeout 30 -c ~/.huntforge/fingerprints.json"
+        extra_args: ""
+        custom_command: null
+        config:
+          threads: 100
+          timeout: 30
+          fingerprints: null    # null = use subjack default fingerprints
+
+      - tool: nikto
+        always: true
+        binary: "nikto"
+        weight: medium
+        timeout: 600
+        output_file: "raw/nikto.xml"
+        default_flags: "-h {domain} -o {output_file} -Format xml -maxtime 10m -nointeractive"
+        extra_args: ""
+        custom_command: null
+        config:
+          tuning: "x6"          # x=all tests, 6=denial of service excluded
+
+      - tool: dalfox
+        always: false
+        if_tag: "params_found"       # only if parameters were found in Phase 5
+        binary: "dalfox"
+        weight: medium
+        timeout: 300
+        output_file: "raw/dalfox.json"
+        default_flags: "file {params_file} -o {output_file} --silence --no-spinner"
+        extra_args: ""
+        custom_command: null
+        config:
+          worker: 100
+          timeout: 10
+          blind_xss: null       # set your blind XSS callback URL here if you have one
+
+      - tool: sqlmap
+        always: false
+        if_tag: "params_found"       # only if parameters were found in Phase 5
+        binary: "sqlmap"
+        weight: heavy
+        timeout: 600
+        output_file: "raw/sqlmap/"
+        default_flags: "-m {params_file} --batch --output-dir={output_file} --level=2 --risk=2"
+        extra_args: ""
+        custom_command: null
+        config:
+          level: 2              # 1-5, higher = more tests
+          risk: 2               # 1-3, higher = more risky payloads
+          threads: 4
+          tamper: null          # comma-separated tamper scripts, null = none
+          dbms: null            # null = auto-detect
+
+      - tool: wpscan_vuln
+        always: false
+        if_tag: "has_cms"            # only if CMS detected in Phase 4
+        binary: "wpscan"
+        weight: medium
+        timeout: 300
+        output_file: "raw/wpscan_vuln.json"
+        default_flags: "--url https://{domain} --enumerate vp,vt,u --output {output_file} --format json"
+        extra_args: ""
+        custom_command: null
+        config:
+          api_token: null       # WPSCAN_API_TOKEN env var for vulnerability database
+          enumerate: "vp,vt,u,m"  # vulnerable plugins, themes, users, media
+
+      - tool: cors_scanner
+        always: false
+        if_tag: "has_api"            # only if API detected in Phase 4
+        binary: "python3"
+        weight: light
+        timeout: 120
+        output_file: "raw/cors_scan.json"
+        default_flags: "corsy.py -i {input_file} -o {output_file} -t 10"
+        extra_args: ""
+        custom_command: null
+
+      - tool: ssrf_check
+        always: false
+        if_tag: "params_found"       # only if parameters found in Phase 5
+        binary: "nuclei"
+        weight: medium
+        timeout: 300
+        output_file: "raw/ssrf.json"
+        default_flags: "-l {params_file} -t ssrf -o {output_file} -json -silent"
+        extra_args: ""
+        custom_command: null
+
+
+# =============================================================================
+# WORDLISTS
+# =============================================================================
+
+wordlists:
+  base_dir: "~/.huntforge/wordlists"
+
+  subdomains:
+    default: "all.txt"              # JHaddix all.txt — 9M+ entries
+    fast:    "subdomains-top1million-110000.txt"  # SecLists — 110k entries
+    custom:  null
+
+  directories:
+    default: "raft-medium-directories.txt"
+    large:   "raft-large-directories.txt"
+    custom:  null
+
+  parameters:
+    default: "burp-parameter-names.txt"  # SecLists burp parameter names
+    custom:  null
+
+  extensions:
+    default:
+      - "php"
+      - "asp"
+      - "aspx"
+      - "jsp"
+      - "html"
+      - "js"
+      - "json"
+      - "txt"
+      - "bak"
+      - "zip"
+      - "tar"
+      - "gz"
+      - "env"
+      - "config"
+      - "xml"
+      - "yaml"
+      - "yml"
+      - "log"
+
+
+# =============================================================================
+# SCOPE ENFORCER CONFIG
+# =============================================================================
+
+scope:
+  strict_mode: true         # if true, reject any result not matching scope
+  allow_wildcards: true     # allow *.example.com style scope matching
+  out_of_scope_action: "skip"   # skip | log | abort
+
+  # These are populated at runtime by ScopeEnforcer from the CLI args
+  # You can also hardcode them here for specific use cases:
+  in_scope: []
+  out_of_scope:
+    - "admin.internal.*"   # example hardcoded exclusion
+    - "*.prod-internal.*"  # example hardcoded exclusion
+
+
+# =============================================================================
+# BUDGET TRACKER CONFIG
+# =============================================================================
+
+budget:
+  enabled: true
+  max_requests_total: 100000    # hard stop if total requests exceed this
+  max_requests_per_phase:
+    phase_1_passive_recon:      5000
+    phase_2_secrets_osint:      2000
+    phase_3_asset_discovery:    15000
+    phase_4_surface_intelligence: 5000
+    phase_5_enumeration:        20000
+    phase_6_content_discovery:  30000
+    phase_7_vuln_scan:          25000
+  warn_at_percent: 80           # log warning when 80% of budget used
+  action_on_exceeded: "warn"    # warn | skip_tool | abort_phase | abort_scan
+
+
+# =============================================================================
+# RESOURCE MONITOR CONFIG
+# =============================================================================
+
+resource_monitor:
+  enabled: true
+  check_before_each_tool: true
+  check_interval_seconds: 5
+  machine_profile: "standard"   # aggressive | standard | passive | custom
+
+  profiles:
+    aggressive:
+      cpu_threshold: 90
+      ram_threshold: 90
+      wait_seconds: 10
+    standard:
+      cpu_threshold: 80
+      ram_threshold: 85
+      wait_seconds: 15
+    passive:
+      cpu_threshold: 60
+      ram_threshold: 70
+      wait_seconds: 30
+    custom:
+      cpu_threshold: 75    # edit these if using custom profile
+      ram_threshold: 80
+      wait_seconds: 20
+
+
+# =============================================================================
+# OUTPUT CONFIG
+# =============================================================================
+
+output:
+  base_dir: "output"
+  structure:
+    raw_dir:       "raw"
+    processed_dir: "processed"
+    report_file:   "report.html"
+    tags_file:     "processed/active_tags.json"
+    events_file:   "processed/scan_events.jsonl"
+    summary_file:  "processed/scan_summary.json"
+
+  deduplication:
+    enabled: true
+    case_insensitive: true      # deduplicate regardless of case
+    normalize_urls: true        # strip trailing slashes, sort params
+
+  formats:
+    subdomains: "txt"           # one per line
+    urls:       "txt"           # one per line
+    findings:   "json"          # structured with metadata
+    report:     "html"          # AI-generated final report
+
+
+# =============================================================================
+# TAG EXPIRY CONFIG (v3 feature)
+# =============================================================================
+
+tag_expiry:
+  enabled: false              # set true to expire tags after N phases
+  default_ttl_phases: null    # null = tags never expire
+  per_tag_ttl:
+    # Example: expire these tags after 2 phases if you want to re-evaluate
+    # has_api: 2
+    # has_cms: 3
+    null: null                # placeholder — add real tag TTLs here if needed
+
+
+# =============================================================================
+# LOGGING CONFIG
+# =============================================================================
+
+logging:
+  level: "INFO"               # DEBUG | INFO | WARNING | ERROR
+  log_file: "logs/huntforge.log"
+  siem_format: false          # set true to output JSONL for SIEM ingestion
+  show_tool_output: false     # set true to print raw tool stdout to console
+  show_skipped_tools: true    # log which tools were skipped and why
+  color: true                 # colorized console output
+
+
+# =============================================================================
+# AI CONFIG
+# =============================================================================
+
+ai:
+  methodology_engine:
+    enabled: true
+    provider: "ollama"        # ollama | anthropic
+    model: "llama3"           # ollama: llama3, mistral, phi3 | anthropic: claude-sonnet-4-20250514
+    fallback_to_default: true # if AI methodology fails, use this file
+
+  report_generator:
+    enabled: true
+    provider: "anthropic"     # anthropic | ollama (ollama for offline)
+    model: "claude-sonnet-4-20250514"
+    max_tokens: 4096
+    include_tags_in_prompt: true  # pass active_tags to AI for smarter reports
+    report_sections:
+      - "Executive Summary"
+      - "Attack Surface Map"
+      - "Technology Stack"
+      - "High-Priority Findings"
+      - "Full Subdomain Table"
+      - "Open Ports & Services"
+      - "Discovered Endpoints"
+      - "Vulnerability Details"
+      - "Next Steps for Manual Testing"
+      - "Remediation Recommendations"

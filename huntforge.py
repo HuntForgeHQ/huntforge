@@ -18,6 +18,10 @@ import sys
 import yaml
 import json
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Auto-load .env from project root on every CLI invocation
+load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
 from rich.console import Console
 from rich.panel import Panel
@@ -26,8 +30,11 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from core.orchestrator import Orchestrator
 from core.scope_enforcer import ScopeEnforcer
+from core.scan_history import ScanHistory
+from core.tag_manager import TagManager
 
 from ai.methodology_engine import generate_methodology
+from ai.report_generator import generate_report as ai_generate_report
 
 # --------------------------------------------------------
 # Global Console
@@ -175,6 +182,10 @@ def run_scan(domain, methodology_path, profile):
 
     console.print("\n[cyan]Launching HuntForge Orchestrator[/cyan]\n")
 
+    history = ScanHistory()
+    scan_id = history.record_start(domain, f"output/{domain}")
+    status = "FAILED"
+
     try:
 
         orch = Orchestrator(
@@ -184,17 +195,24 @@ def run_scan(domain, methodology_path, profile):
         )
 
         orch.run()
+        status = "COMPLETED"
 
     except KeyboardInterrupt:
 
         console.print("\n[yellow]Scan interrupted by user[/yellow]")
+        status = "INTERRUPTED"
 
     except Exception as e:
 
         console.print(
             f"\n[red]Fatal error:[/red] {e}"
         )
+        status = "FAILED"
         sys.exit(1)
+        
+    finally:
+        tag_count = len(orch.tag_manager.get_all()) if 'orch' in locals() else 0
+        history.record_end(scan_id, status, tag_count)
 
 
 # --------------------------------------------------------
@@ -203,18 +221,24 @@ def run_scan(domain, methodology_path, profile):
 
 def generate_report(domain):
 
-    report_path = f"output/{domain}/report.html"
+    output_dir = f"output/{domain}"
+    tags_file = os.path.join(output_dir, "active_tags.json")
 
-    if not os.path.exists(report_path):
-
-        console.print(
-            "[red]No report found for this domain[/red]"
-        )
+    if not os.path.exists(tags_file):
+        console.print("[red]No scan data found for this domain[/red]")
         return
 
-    console.print(
-        f"[green]Report ready:[/green] {report_path}"
-    )
+    # Reconstruct TagManager state
+    tm = TagManager()
+    with open(tags_file, 'r') as f:
+        tm.tags = json.load(f)
+
+    console.print("[cyan]Contacting Claude API for executive report...[/cyan]")
+    ai_generate_report(domain, tm, output_dir)
+    
+    report_path = os.path.join(output_dir, 'logs', 'ai_report.md')
+    if os.path.exists(report_path):
+        console.print(f"[green]Report ready:[/green] {report_path}")
 
 
 # --------------------------------------------------------

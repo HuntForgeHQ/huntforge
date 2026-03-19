@@ -14,6 +14,7 @@ class HuntForgeError(Exception):
 
     Hierarchy:
         HuntForgeError
+            ├── DockerNotRunningError
             ├── BinaryNotFoundError
             ├── ToolTimeoutError
             ├── ToolExecutionError
@@ -37,6 +38,20 @@ class HuntForgeError(Exception):
 # Raised by : BaseModule._run_subprocess()
 # Caught by : Orchestrator._run_tool()
 # These errors mean the tool could not run at all.
+
+class DockerNotRunningError(HuntForgeError):
+    """
+    The HuntForge Docker container is down or inaccessible.
+
+    Example:
+        raise DockerNotRunningError(
+            "Docker container 'huntforge-kali' is not running."
+        )
+
+    Orchestrator action: abort scan immediately. Tools cannot run.
+    """
+    pass
+
 
 class BinaryNotFoundError(HuntForgeError):
     """
