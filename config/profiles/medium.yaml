@@ -1,0 +1,59 @@
+# Resource Profile: Medium (8-16 GB RAM)
+# Balanced approach. Good performance without overwhelming system.
+
+resource_limits:
+  max_concurrent_tools: 4
+  max_ram_gb: 8.0
+  max_cpu_percent: 85
+  safety_margin_percent: 20
+
+tool_overrides:
+  # Phase 1
+  subfinder:
+    threads: 25
+    rate_limit: 100
+  amass:
+    threads: 8
+
+  # Phase 3
+  httpx:
+    threads: 30
+    rate_limit: 150
+  dnsx:
+    threads: 50
+  naabu:
+    rate: 2000
+
+  # Phase 5
+  katana:
+    depth: 3
+    concurrency: 8
+  gospider:
+    concurrent: 8
+    depth: 3
+
+  # Phase 6
+  ffuf:
+    threads: 50
+  dirsearch:
+    threads: 30
+  feroxbuster:
+    threads: 40
+    depth: 3
+
+  # Phase 7
+  nuclei:
+    concurrency: 50
+    bulk_size: 100
+  sqlmap:
+    threads: 3
+    level: 2
+    risk: 2
+  dalfox:
+    worker: 50
+
+scheduler:
+  light_phase_concurrency: 8
+  heavy_phase_concurrency: 2
+  enable_throttling: true
+  respect_user_activity: true

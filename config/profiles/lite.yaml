@@ -1,0 +1,67 @@
+# Resource Profile: Lite (4-8 GB RAM)
+# Optimized for low-end devices. All tools run, but with reduced concurrency.
+
+resource_limits:
+  max_concurrent_tools: 2
+  max_ram_gb: 3.0
+  max_cpu_percent: 80
+  safety_margin_percent: 25
+
+tool_overrides:
+  # Phase 1 - Reduce threads
+  subfinder:
+    threads: 10
+    rate_limit: 50
+  amass:
+    threads: 3  # Amass is slow, limit heavily
+  theharvester:
+    limit: 100  # Limit results
+
+  # Phase 3 - Light discovery
+  httpx:
+    threads: 15
+    rate_limit: 50
+  dnsx:
+    threads: 20
+  naabu:
+    rate: 500  # Slow down port scan
+
+  # Phase 5 - Enumeration
+  katana:
+    depth: 2  # Reduce crawl depth
+    concurrency: 5
+  gospider:
+    concurrent: 5
+    depth: 2
+  arjun:
+    threads: 2  # Arjun can be memory heavy
+
+  # Phase 6 - Content discovery (most dangerous for memory)
+  ffuf:
+    threads: 20
+    # rate_limit: 100  # Uncomment to be extra gentle
+  dirsearch:
+    threads: 15
+  feroxbuster:
+    threads: 20
+    depth: 2
+
+  # Phase 7 - Vuln scanning (sequential on lite)
+  nuclei:
+    concurrency: 10
+    bulk_size: 20
+  sqlmap:
+    threads: 1  # Sqlmap is a memory hog, single thread
+    level: 2    # Reduced enumeration
+    risk: 2
+  dalfox:
+    worker: 30
+  nikto:
+    tuning: "x6"  # Keep same, nikto is light
+
+# Scheduling strategy
+scheduler:
+  light_phase_concurrency: 5  # Phase 1-2 can run up to 5 tools
+  heavy_phase_concurrency: 1  # Phase 6-7 run sequentially
+  enable_throttling: true
+  respect_user_activity: true

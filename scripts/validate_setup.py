@@ -1,211 +1,152 @@
 #!/usr/bin/env python3
 """
-HuntForge Setup Validation - Run after setup to verify everything works
+HuntForge Setup Validation - Native Installation
+
+Checks:
+- Python dependencies
+- Installed tools (by profile)
+- Configuration files
+- System resources
 """
 
-import subprocess
 import sys
 import json
+import shutil
 from pathlib import Path
+import subprocess
 
-def run_cmd(cmd):
-    """Run shell command and return output"""
-    try:
-        result = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True, timeout=5
-        )
-        return result.returncode == 0, result.stdout.strip(), result.stderr.strip()
-    except subprocess.TimeoutExpired:
-        return False, "", "timeout"
-    except Exception as e:
-        return False, "", str(e)
-
-def check_docker():
-    """Check if Docker is running"""
-    print("[1/8] Checking Docker...")
-    ok, out, err = run_cmd("docker info")
-    if ok:
-        print("    ✓ Docker is running")
-        return True
-    else:
-        print("    ✗ Docker is not running or not accessible")
-        print(f"    Error: {err}")
-        return False
-
-def check_services():
-    """Check if Docker services are healthy"""
-    print("\n[2/8] Checking HuntForge services...")
-    ok, out, err = run_cmd("docker-compose ps")
-    if "huntforge" in out and "Up" in out:
-        print("    ✓ huntforge service is up")
-    else:
-        print("    ✗ huntforge service is not running")
-        print("    Run: docker-compose up -d")
-        return False
-
-    ok, out, err = run_cmd("docker-compose ps")
-    if "dashboard" in out and "Up" in out:
-        print("    ✓ dashboard service is up")
-    else:
-        print("    ✗ dashboard service is not running")
-        print("    Run: docker-compose up -d")
-        return False
-    return True
-
-def check_tools():
-    """Check if essential tools are available in container"""
-    print("\n[3/8] Checking security tools...")
-    tools = [
-        "subfinder", "httpx", "nuclei", "katana", "ffuf",
-        "sqlmap", "dalfox", "wpscan", "whatweb", "nmap"
-    ]
-    missing = []
-
-    for tool in tools:
-        ok, out, err = run_cmd(f"docker exec huntforge which {tool}")
-        if ok and out:
-            print(f"    ✓ {tool}")
-        else:
-            print(f"    ✗ {tool} NOT FOUND")
-            missing.append(tool)
-
-    if missing:
-        print(f"\n    Missing tools: {', '.join(missing)}")
-        print("    Some tools may be in different locations or need reinstallation")
-        return False
-    return True
-
-def check_python_modules():
-    """Check if Python modules are installed"""
-    print("\n[4/8] Checking Python modules...")
-    modules = [
-        "yaml", "loguru", "flask", "requests", "rich"
-    ]
-    missing = []
-
-    for module in modules:
-        ok, out, err = run_cmd(
-            f"docker exec huntforge python3 -c \"import {module}\" 2>&1"
-        )
-        if ok:
-            print(f"    ✓ {module}")
-        else:
-            print(f"    ✗ {module} NOT FOUND")
-            missing.append(module)
-
-    if missing:
-        print(f"\n    Missing modules: {', '.join(missing)}")
-        return False
-    return True
-
-def check_huntforge_cli():
-    """Test HuntForge CLI"""
-    print("\n[5/8] Testing HuntForge CLI...")
-    ok, out, err = run_cmd(
-        "docker exec huntforge python3 huntforge.py --help"
-    )
-    if ok and "HuntForge" in out:
-        print("    ✓ CLI responds correctly")
-        return True
-    else:
-        print("    ✗ CLI check failed")
-        print(f"    Output: {out or err}")
-        return False
-
-def check_dashboard():
-    """Test dashboard accessibility"""
-    print("\n[6/8] Testing Dashboard...")
-    ok, out, err = run_cmd("curl -s http://localhost:5000 | head -20")
-    if ok and "Flask" in out:
-        print("    ✓ Dashboard is accessible at http://localhost:5000")
-        return True
-    else:
-        print("    ✗ Dashboard not responding")
-        print("    Check: docker-compose logs dashboard")
-        return False
-
-def check_directories():
-    """Check if required directories exist"""
-    print("\n[7/8] Checking directories...")
-    dirs = ["output", "logs", "config", ".huntforge"]
-    all_ok = True
-
-    for d in dirs:
-        if Path(d).exists():
-            print(f"    ✓ {d}/ exists")
-        else:
-            print(f"    ! {d}/ missing (will be created on first scan)")
-
-    return True
-
-def check_scope():
-    """Check if scope.json is properly configured"""
-    print("\n[8/8] Checking scope configuration...")
-    scope_file = Path.home() / ".huntforge" / "scope.json"
-
-    if not scope_file.exists():
-        print("    ! ~/.huntforge/scope.json not found")
-        print("    It will be created on first scan with default values")
-        return True
-
-    try:
-        with open(scope_file) as f:
-            data = json.load(f)
-        if "programs" in data:
-            print("    ✓ scope.json is valid")
-            return True
-        else:
-            print("    ✗ scope.json format is invalid")
-            return False
-    except Exception as e:
-        print(f"    ✗ scope.json parse error: {e}")
-        return False
+def check(description, condition, error_msg=""):
+    """Print check result"""
+    status = "✓" if condition else "✗"
+    color = "\033[92m" if condition else "\033[91m"
+    reset = "\033[0m"
+    print(f"  {color}[{status}]{reset} {description}")
+    if not condition and error_msg:
+        print(f"         {error_msg}")
+    return condition
 
 def main():
-    print("=" * 50)
-    print("  HuntForge Setup Validation")
-    print("=" * 50)
+    print("="*60)
+    print("HuntForge Setup Validation")
+    print("="*60)
     print()
 
-    results = []
-    results.append(("Docker", check_docker()))
-    results.append(("Services", check_services()))
-    results.append(("Tools", check_tools()))
-    results.append(("Python Modules", check_python_modules()))
-    results.append(("CLI", check_huntforge_cli()))
-    results.append(("Dashboard", check_dashboard()))
-    results.append(("Directories", check_directories()))
-    results.append(("Scope", check_scope()))
+    all_ok = True
 
-    print("\n" + "=" * 50)
-    print("  Summary")
-    print("=" * 50)
-
-    passed = sum(1 for _, ok in results if ok)
-    total = len(results)
-
-    for name, ok in results:
-        status = "✓ PASS" if ok else "✗ FAIL"
-        print(f"  {status:8} {name}")
-
-    print()
-    print(f"  Score: {passed}/{total} ({100*passed//total}%)")
+    # 1. Python version
+    print("[1] Python environment")
+    py_ok = sys.version_info >= (3, 9)
+    all_ok &= check(f"Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro} (need 3.9+)",
+                    py_ok, "Upgrade to Python 3.9+")
     print()
 
-    if passed == total:
-        print("  ✓ Setup is complete and working!")
-        print()
-        print("  Next: Run your first scan")
-        print("    docker exec huntforge python3 huntforge.py scan testaspnet.vulnweb.com --profile low")
-        sys.exit(0)
+    # 2. Core modules
+    print("[2] Python dependencies")
+    try:
+        import yaml
+        import loguru
+        import flask
+        import requests
+        import rich
+        check("All core modules available", True)
+    except ImportError as e:
+        check("Core modules", False, f"Run: pip3 install -r requirements.txt ({e})")
+        all_ok = False
+    print()
+
+    # 3. HuntForge modules
+    print("[3] HuntForge core modules")
+    try:
+        from core.tag_manager import TagManager
+        from core.orchestrator import Orchestrator
+        from core.resource_aware_scheduler import AdaptiveScheduler
+        check("Core modules importable", True)
+    except ImportError as e:
+        check("Core modules", False, f"Import error: {e}")
+        all_ok = False
+    print()
+
+    # 4. Tool installation
+    print("[4] Security tools (checking profile: lite)")
+    tools = ['subfinder', 'httpx', 'dnsx', 'nuclei', 'whatweb']
+    for tool in tools:
+        installed = shutil.which(tool) is not None
+        all_ok &= check(f"{tool}", installed, f"Install via: python3 scripts/installer.py --profile lite")
+    print()
+
+    # 5. Configuration
+    print("[5] Configuration files")
+    config_ok = True
+    if not Path("~/.huntforge/scope.json").expanduser().exists():
+        check("~/.huntforge/scope.json", False, "Will be created on first scan")
+        config_ok = False
     else:
-        print("  ✗ Some checks failed. Review the errors above.")
-        print()
-        print("  Common fixes:")
-        print("    - Docker Desktop: Make sure it's running")
-        print("    - Rebuild: docker-compose build --no-cache huntforge")
-        print("    - View logs: docker-compose logs -f")
-        sys.exit(1)
+        check("~/.huntforge/scope.json", True)
+
+    if not Path("config/default_methodology.yaml").exists():
+        check("config/default_methodology.yaml", False, "Missing methodology file")
+        config_ok = False
+    else:
+        check("config/default_methodology.yaml", True)
+
+    if not Path("config/profiles/lite.yaml").exists():
+        check("config/profiles/lite.yaml", False, "Missing resource profile")
+        config_ok = False
+    else:
+        check("config/profiles/lite.yaml", True)
+
+    all_ok &= config_ok
+    print()
+
+    # 6. System resources
+    print("[6] System resources")
+    try:
+        import psutil
+        mem = psutil.virtual_memory()
+        cpu_count = psutil.cpu_count()
+        print(f"  RAM: {mem.total/1024**3:.1f} GB total, {mem.available/1024**3:.1f} GB available")
+        print(f"  CPU: {cpu_count} cores")
+        if mem.total < 4 * 1024**3:
+            print("  \033[93m⚠ Warning: Less than 4GB RAM. Use --profile lite\033[0m")
+        else:
+            print("  \033[92m✓ Sufficient RAM for bug bounty work\033[0m")
+    except ImportError:
+        check("psutil", False, "Install: pip3 install psutil")
+        all_ok = False
+    print()
+
+    # 7. Write permissions
+    print("[7] Directories")
+    dirs_ok = True
+    for d in ['output', 'logs', 'config']:
+        path = Path(d)
+        if not path.exists():
+            try:
+                path.mkdir(parents=True, exist_ok=True)
+                print(f"  \033[92m✓ Created {d}/\033[0m")
+            except:
+                check(f"Can create {d}/", False)
+                dirs_ok = False
+        else:
+            check(f"{d}/ exists and writable", True)
+    all_ok &= dirs_ok
+    print()
+
+    # Summary
+    print("="*60)
+    if all_ok:
+        print("\033[92m✓ Setup is valid! Ready to scan.\033[0m")
+        print("\nNext steps:")
+        print("  1. Edit ~/.huntforge/scope.json with your targets")
+        print("  2. Run: python3 huntforge.py scan testaspnet.vulnweb.com --profile lite")
+    else:
+        print("\033[91m✗ Some checks failed. Fix issues above.\033[0m")
+        print("\nQuick fix:")
+        print("  python3 -m pip install -r requirements.txt")
+        print("  python3 scripts/installer.py --profile lite")
+    print("="*60)
+
+    return 0 if all_ok else 1
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
