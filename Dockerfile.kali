@@ -52,8 +52,8 @@ RUN go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest 
     && go install -v github.com/haccer/subjack/v2/cmd/subjack@latest \
     && nuclei -update-templates 2>/dev/null || true
 
-# Install Python tools globally for the user (not system-wide)
-RUN pip3 install --user --break-system-packages —upgrade pip \
+# Install Python tools for the user
+RUN pip3 install --user --upgrade pip setuptools wheel 2>&1 | grep -v "WARNING" || true \
     && pip3 install --user srcscan 2>/dev/null || true
 
 # Verify installations
