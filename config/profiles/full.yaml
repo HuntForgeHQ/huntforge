@@ -1,0 +1,59 @@
+# Resource Profile: Full (16+ GB RAM)
+# No artificial limits. Run all tools at full capacity.
+
+resource_limits:
+  max_concurrent_tools: 6
+  max_ram_gb: 16.0
+  max_cpu_percent: 90
+  safety_margin_percent: 15
+
+tool_overrides:
+  # Phase 1
+  subfinder:
+    threads: 100
+    rate_limit: 300
+  amass:
+    threads: 15
+
+  # Phase 3
+  httpx:
+    threads: 100
+    rate_limit: 300
+  dnsx:
+    threads: 200
+  naabu:
+    rate: 5000
+
+  # Phase 5
+  katana:
+    depth: 5
+    concurrency: 20
+  gospider:
+    concurrent: 20
+    depth: 5
+
+  # Phase 6
+  ffuf:
+    threads: 150
+  dirsearch:
+    threads: 100
+  feroxbuster:
+    threads: 150
+    depth: 5
+
+  # Phase 7
+  nuclei:
+    concurrency: 100
+    bulk_size: 200
+  sqlmap:
+    threads: 10
+    level: 3
+    risk: 3
+  dalfox:
+    worker: 150
+
+scheduler:
+  light_phase_concurrency: 12
+  heavy_phase_concurrency: 4
+  enable_throttling: true  # Still respect system if user active
+  respect_user_activity: true

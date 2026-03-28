@@ -1,0 +1,484 @@
+#!/usr/bin/env python3
+"""
+HuntForge Native Installer
+
+Detects OS, checks installed tools, installs missing ones.
+Works on: Kali, Ubuntu, Debian, macOS, Windows WSL2
+
+Usage:
+  python3 scripts/installer.py --profile lite|medium|full
+  python3 scripts/installer.py --profile lite --download-wordlists
+"""
+
+import os
+import sys
+import json
+import subprocess
+import shutil
+import argparse
+from pathlib import Path
+from typing import Dict, List, Tuple, Optional
+
+# Color codes for terminal output
+GREEN = '\033[92m'
+YELLOW = '\033[93m'
+RED = '\033[91m'
+BLUE = '\033[94m'
+RESET = '\033[0m'
+BOLD = '\033[1m'
+
+def log_info(msg):
+    print(f"{BLUE}[*]{RESET} {msg}")
+
+def log_success(msg):
+    print(f"{GREEN}[+]{RESET} {msg}")
+
+def log_warning(msg):
+    print(f"{YELLOW}[!]{RESET} {msg}")
+
+def log_error(msg):
+    print(f"{RED}[-]{RESET} {msg}")
+
+def run_cmd(cmd: List[str], check=True, capture_output=False) -> Tuple[bool, str]:
+    """Run shell command and return (success, output)"""
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=capture_output,
+            text=True,
+            timeout=300
+        )
+        if check and result.returncode != 0:
+            return False, result.stderr
+        return True, result.stdout if capture_output else ""
+    except subprocess.TimeoutExpired:
+        return False, "Command timed out"
+    except Exception as e:
+        return False, str(e)
+
+def detect_os() -> Tuple[str, str]:
+    """Detect OS and package manager. Returns (os_family, package_manager)"""
+    platform = sys.platform
+
+    if platform.startswith('linux'):
+        # Check for Kali/Ubuntu/Debian
+        if shutil.which('apt'):
+            # Try to detect distro
+            success, output = run_cmd(['lsb_release', '-is'], capture_output=True)
+            if success:
+                distro = output.strip().lower()
+                if 'kali' in distro or 'ubuntu' in distro or 'debian' in distro:
+                    return 'debian', 'apt'
+        elif shutil.which('yum'):
+            return 'redhat', 'yum'
+        elif shutil.which('dnf'):
+            return 'redhat', 'dnf'
+        elif shutil.which('pacman'):
+            return 'arch', 'pacman'
+        return 'linux', 'unknown'
+
+    elif platform == 'darwin':
+        return 'macos', 'brew'
+
+    elif platform == 'win32':
+        # WSL2?
+        if 'microsoft' in os.uname().release.lower():
+            return 'wsl', 'apt'  # WSL uses apt
+        return 'windows', 'unknown'
+
+    return 'unknown', 'unknown'
+
+def check_tool_installed(tool_name: str) -> bool:
+    """Check if a tool binary is in PATH"""
+    return shutil.which(tool_name) is not None
+
+def install_via_apt(tool: str, package_name: str = None) -> bool:
+    """Install tool using apt (Kali/Ubuntu/Debian)"""
+    package = package_name or tool
+    log_info(f"Installing {tool} via apt...")
+
+    # Update package list (if not done recently)
+    run_cmd(['apt-get', 'update'], check=False)
+
+    success, output = run_cmd(['apt-get', 'install', '-y', package])
+    if success:
+        log_success(f"{tool} installed")
+        return True
+    else:
+        log_error(f"Failed to install {tool}: {output}")
+        return False
+
+def install_via_go(tool: str, go_package: str) -> bool:
+    """Install Go tool via go install"""
+    log_info(f"Installing {tool} via go install...")
+
+    # Check if Go is installed
+    if not check_tool_installed('go'):
+        log_error("Go is not installed. Install Go first or use apt/other method.")
+        return False
+
+    success, output = run_cmd(['go', 'install', go_package])
+    if success:
+        log_success(f"{tool} installed to ~/go/bin")
+        return True
+    else:
+        log_error(f"Failed to install {tool}: {output}")
+        return False
+
+def install_via_pip(tool: str, package_name: str = None) -> bool:
+    """Install Python tool via pip"""
+    package = package_name or tool
+    log_info(f"Installing {tool} via pip...")
+
+    success, output = run_cmd([sys.executable, '-m', 'pip', 'install', '--user', package])
+    if success:
+        log_success(f"{tool} installed")
+        return True
+    else:
+        log_error(f"Failed to install {tool}: {output}")
+        return False
+
+def ensure_git_binaries():
+    """Ensure core Git binaries are in PATH"""
+    home = Path.home()
+    go_bin = home / 'go' / 'bin'
+    local_bin = home / '.local' / 'bin'
+
+    paths_to_add = []
+    if go_bin.exists():
+        paths_to_add.append(str(go_bin))
+    if local_bin.exists():
+        paths_to_add.append(str(local_bin))
+
+    if paths_to_add:
+        current_path = os.environ.get('PATH', '')
+        for path in paths_to_add:
+            if path not in current_path:
+                os.environ['PATH'] = f"{path}:{current_path}"
+                log_info(f"Added {path} to PATH for this session")
+
+class HuntForgeInstaller:
+    """Main installer logic"""
+
+    # Tool installation strategies by OS
+    TOOL_INSTALL_MAP = {
+        'debian': {  # Kali, Ubuntu, Debian
+            'subfinder': ('apt', 'subfinder'),
+            'amass': ('go', 'github.com/owasp-amass/amass/v3/...@v3.18.3'),
+            'assetfinder': ('go', 'github.com/tomnomnom/assetfinder@latest'),
+            'httpx': ('apt', 'httpx'),  # Kali has httpx package
+            'dnsx': ('apt', 'dnsx'),
+            'naabu': ('apt', 'naabu'),
+            'nuclei': ('apt', 'nuclei'),
+            'katana': ('apt', 'katana'),
+            'gau': ('go', 'github.com/lc/gau/v2/cmd/gau@latest'),
+            'ffuf': ('apt', 'ffuf'),
+            'dirsearch': ('apt', 'dirsearch'),
+            'wpscan': ('apt', 'wpscan'),
+            'sqlmap': ('apt', 'sqlmap'),
+            'dalfox': ('go', 'github.com/hahwul/dalfox/v2@latest'),
+            'gitleaks': ('apt', 'gitleaks'),
+            'trufflehog': ('apt', 'trufflehog'),
+            'nikto': ('apt', 'nikto'),
+            'whatweb': ('apt', 'whatweb'),
+            'wappalyzer': ('go', 'github.com/wappalyzer/wappalyzer-cli@latest'),
+            'nmap': ('apt', 'nmap'),
+            'gospider': ('go', 'github.com/jaeles-project/gospider@latest'),
+            'paramspider': ('go', 'github.com/ethicalhackingplayground/paramspider/cmd/paramspider@latest'),
+            'subjack': ('go', 'github.com/haccer/subjack/v2/cmd/subjack@latest'),
+            'theharvester': ('apt', 'theharvester'),
+            'findomain': ('apt', 'findomain'),
+            'waybackurls': ('go', 'github.com/tomnomnom/waybackurls@latest'),
+            'crtsh': None,  # API call, no binary needed
+        },
+        'macos': {  # macOS with Homebrew
+            'subfinder': ('brew', 'subfinder'),
+            'httpx': ('brew', 'httpx'),
+            'nuclei': ('brew', 'nuclei'),
+            'ffuf': ('brew', 'ffuf'),
+            'sqlmap': ('brew', 'sqlmap'),
+            # Others may need go install
+        },
+        'wsl': {  # WSL2 - same as Debian
+            'subfinder': ('apt', 'subfinder'),
+            'httpx': ('apt', 'httpx'),
+            'nuclei': ('apt', 'nuclei'),
+            'ffuf': ('apt', 'ffuf'),
+            'sqlmap': ('apt', 'sqlmap'),
+        }
+    }
+
+    # Tools needed by profile
+    PROFILE_TOOLS = {
+        'lite': [
+            'subfinder',
+            'httpx',
+            'dnsx',
+            'nuclei',
+            'whatweb',
+        ],
+        'medium': [
+            'subfinder', 'amass', 'assetfinder', 'findomain', 'theharvester',  # Phase 1
+            'httpx', 'dnsx', 'naabu',  # Phase 3
+            'whatweb', 'wappalyzer', 'nmap',  # Phase 4
+            'katana', 'paramspider', 'gospider',  # Phase 5
+            'ffuf', 'dirsearch',  # Phase 6
+            'nuclei', 'nikto',  # Phase 7
+        ],
+        'full': [  # All tools
+            'subfinder', 'amass', 'assetfinder', 'findomain', 'theharvester', 'waybackurls', 'crtsh',
+            'httpx', 'dnsx', 'naabu', 'puredns',
+            'whatweb', 'wappalyzer', 'nmap', 'shodan', 'censys',
+            'katana', 'gau', 'gospider', 'paramspider', 'gf_extract', 'graphql_voyager', 'arjun',
+            'ffuf', 'dirsearch', 'feroxbuster', 'wpscan', 's3scanner', 'cloud_enum',
+            'nuclei', 'nuclei_cms', 'nuclei_auth', 'subjack', 'nikto', 'dalfox', 'sqlmap', 'wpscan_vuln',
+            'gitleaks', 'trufflehog', 'github_dorking', 'jsluice', 'linkfinder', 'secretfinder',
+        ]
+    }
+
+    def __init__(self, profile: str = 'lite', download_wordlists: bool = False):
+        self.profile = profile
+        self.download_wordlists = download_wordlists
+        self.os_family, self.pkg_manager = detect_os()
+        self.home = Path.home()
+        self.huntforge_dir = self.home / '.huntforge'
+        self.config_dir = self.huntforge_dir / 'config'
+        self.wordlists_dir = self.huntforge_dir / 'wordlists'
+        self.installed_tools: Dict[str, bool] = {}
+
+        log_info(f"Detected OS: {self.os_family}, Package manager: {self.pkg_manager}")
+        log_info(f"Profile: {profile}")
+        log_info(f"HuntForge dir: {self.huntforge_dir}")
+
+    def check_prerequisites(self) -> bool:
+        """Check if system meets basic requirements"""
+        log_info("Checking prerequisites...")
+
+        # Python 3.9+
+        if sys.version_info < (3, 9):
+            log_error("Python 3.9+ required")
+            return False
+        log_success(f"Python {sys.version_info.major}.{sys.version_info.minor} OK")
+
+        # pip
+        if not check_tool_installed('pip'):
+            log_warning("pip not found, will install via apt")
+            if self.os_family == 'debian':
+                install_via_apt('pip3', 'python3-pip')
+            else:
+                log_error("Cannot install pip automatically. Please install pip first.")
+                return False
+
+        # Check if running on Kali (recommended) or compatible
+        if self.os_family not in ['debian', 'macos', 'wsl']:
+            log_warning(f"Unsupported OS: {self.os_family}. Installation may fail.")
+            return False
+
+        return True
+
+    def check_existing_tools(self, tools: List[str]) -> Dict[str, bool]:
+        """Check which tools are already installed"""
+        log_info(f"Checking {len(tools)} tools for profile '{self.profile}'...")
+
+        installed = {}
+        for tool in tools:
+            if tool in ['crtsh', 'graphql_voyager', 's3scanner', 'cloud_enum']:
+                # Special Python tools that don't have standalone binaries
+                installed[tool] = self._check_python_module(tool)
+            else:
+                installed[tool] = check_tool_installed(tool)
+
+        counts = sum(installed.values())
+        log_success(f"{counts}/{len(tools)} tools already installed")
+        return installed
+
+    def _check_python_module(self, module_name: str) -> bool:
+        """Check if a Python module is importable"""
+        try:
+            __import__(module_name.replace('-', '_'))
+            return True
+        except ImportError:
+            return False
+
+    def install_missing_tools(self, tools: List[str], installed: Dict[str, bool]):
+        """Install tools that are missing"""
+        to_install = [t for t in tools if not installed.get(t, False)]
+
+        if not to_install:
+            log_success("All required tools are already installed!")
+            return True
+
+        log_info(f"Installing {len(to_install)} missing tools...")
+
+        # Add Go to PATH if needed
+        ensure_git_binaries()
+
+        for tool in to_install:
+            if tool not in self.TOOL_INSTALL_MAP.get(self.os_family, {}):
+                log_warning(f"No install method for {tool} on {self.os_family}. Skipping.")
+                continue
+
+            method, package = self.TOOL_INSTALL_MAP[self.os_family][tool]
+
+            if method == 'apt':
+                success = install_via_apt(tool, package)
+            elif method == 'go':
+                success = install_via_go(tool, package)
+            elif method == 'brew':
+                success = install_via_brew(tool, package)
+            elif method == 'pip':
+                success = install_via_pip(tool, package)
+            else:
+                log_warning(f"Unknown install method {method} for {tool}")
+                success = False
+
+            if success:
+                self.installed_tools[tool] = True
+            else:
+                log_error(f"Failed to install {tool}")
+
+        return True  # Continue even if some fail
+
+    def install_via_brew(self, tool: str, package: str) -> bool:
+        """Install via Homebrew (macOS)"""
+        log_info(f"Installing {tool} via brew...")
+        success, output = run_cmd(['brew', 'install', package])
+        if success:
+            log_success(f"{tool} installed")
+            return True
+        else:
+            log_error(f"Failed: {output}")
+            return False
+
+    def setup_directories(self):
+        """Create necessary directory structure"""
+        self.huntforge_dir.mkdir(parents=True, exist_ok=True)
+        self.config_dir.mkdir(parents=True, exist_ok=True)
+        self.wordlists_dir.mkdir(parents=True, exist_ok=True)
+        log_success(f"Created directories in {self.home}/.huntforge/")
+
+    def create_config_files(self):
+        """Create initial configuration files"""
+        # Scope config
+        scope_file = self.huntforge_dir / 'scope.json'
+        if not scope_file.exists():
+            default_scope = {
+                "programs": {
+                    "My Programs": {
+                        "in_scope": ["example.com", "*.example.com"],
+                        "out_of_scope": []
+                    }
+                }
+            }
+            with open(scope_file, 'w') as f:
+                json.dump(default_scope, f, indent=2)
+            log_success(f"Created {scope_file} (edit with your targets)")
+
+        # Tool config (optional customization)
+        tool_config = self.config_dir / 'tool_configs.yaml'
+        if not tool_config.exists():
+            # Copy from project if exists
+            project_config = Path('config/tool_configs.yaml')
+            if project_config.exists():
+                shutil.copy(project_config, tool_config)
+                log_success(f"Copied tool config to {tool_config}")
+
+        log_success("Configuration files created")
+
+    def download_minimal_wordlists(self):
+        """Download minimal wordlists for testing (~100MB)"""
+        if not self.download_wordlists:
+            log_info("Skipping wordlist download (use --download-wordlists to enable)")
+            return
+
+        log_info("Downloading minimal wordlists...")
+        wordlists = {
+            'subdomains-top1million-110000.txt': 'https://github.com/danielmiessler/SecLists/raw/master/Discovery/DNS/subdomains-top1million-110000.txt',
+            'raft-medium-directories.txt': 'https://github.com/danielmiessler/SecLists/raw/master/Discovery/Web-Content/raft-medium-directories.txt',
+            'burp-parameter-names.txt': 'https://github.com/danielmiessler/SecLists/raw/master/Discovery/Web-Content/burp-parameter-names.txt',
+        }
+
+        for filename, url in wordlists.items():
+            dest = self.wordlists_dir / filename
+            if dest.exists():
+                log_info(f"Wordlist already exists: {filename}")
+                continue
+
+            log_info(f"Downloading {filename}...")
+            success, output = run_cmd(['curl', '-sL', url, '-o', str(dest)])
+            if success and dest.exists():
+                size = dest.stat().st_size / 1024 / 1024
+                log_success(f"Downloaded {filename} ({size:.1f} MB)")
+            else:
+                log_warning(f"Failed to download {filename}")
+
+    def verify_huntforge_imports(self) -> bool:
+        """Verify HuntForge core modules can be imported"""
+        try:
+            # Add project root to path
+            sys.path.insert(0, str(Path.cwd()))
+            from core.tag_manager import TagManager
+            from core.orchestrator import Orchestrator
+            log_success("HuntForge core modules OK")
+            return True
+        except Exception as e:
+            log_error(f"HuntForge imports failed: {e}")
+            return False
+
+    def print_summary(self):
+        """Print installation summary"""
+        print("\n" + "="*60)
+        print(f"{BOLD}Installation Complete!{RESET}")
+        print("="*60)
+        print(f"\nProfile: {self.profile}")
+        print(f"Tools installed: {sum(self.installed_tools.values())}")
+
+        print("\nNext steps:")
+        print("  1. Edit ~/.huntforge/scope.json to add your targets")
+        print("  2. Optional: Set API keys in .env file")
+        print("  3. Run your first scan:")
+        print(f"     python3 huntforge.py scan testaspnet.vulnweb.com --profile {self.profile}")
+        print("\nFor help: python3 huntforge.py --help")
+        print("="*60 + "\n")
+
+    def run(self) -> bool:
+        """Run full installation"""
+        print(f"{BOLD}HuntForge Installer{RESET}\n")
+
+        if not self.check_prerequisites():
+            return False
+
+        self.setup_directories()
+
+        # Get tools for profile
+        tools = self.PROFILE_TOOLS.get(self.profile, self.PROFILE_TOOLS['lite'])
+        installed = self.check_existing_tools(tools)
+
+        self.install_missing_tools(tools, installed)
+        self.create_config_files()
+        self.download_minimal_wordlists()
+        self.verify_huntforge_imports()
+        self.print_summary()
+
+        return True
+
+
+def main():
+    parser = argparse.ArgumentParser(description="HuntForge Installer")
+    parser.add_argument('--profile', choices=['lite', 'medium', 'full'],
+                       default='lite', help='Installation profile (default: lite)')
+    parser.add_argument('--download-wordlists', action='store_true',
+                       help='Download minimal wordlists (~100MB)')
+    args = parser.parse_args()
+
+    installer = HuntForgeInstaller(
+        profile=args.profile,
+        download_wordlists=args.download_wordlists
+    )
+
+    success = installer.run()
+    sys.exit(0 if success else 1)
+
+
+if __name__ == "__main__":
+    main()
