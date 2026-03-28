@@ -20,7 +20,7 @@ import signal
 import logging
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 
 from loguru import logger
 
@@ -88,8 +88,11 @@ from modules.content_discovery.wpscan import WpscanModule as Wpscan
 from modules.vuln_scan.nuclei import NucleiModule as Nuclei
 from modules.vuln_scan.subjack import SubjackModule as Subjack
 from modules.vuln_scan.dalfox import DalfoxModule as Dalfox
-# Note: wpscan_vuln, cors_scanner, ssrf_check, sqlmap, nikto not yet implemented as modules
-# They will be handled as external tool executions via BaseModule subclasses to be created
+from modules.vuln_scan.nikto import NiktoModule as Nikto
+from modules.vuln_scan.sqlmap import SQLMapModule as SQLMap
+from modules.vuln_scan.wpscan_vuln import WpscanVulnModule as WpscanVuln
+from modules.vuln_scan.cors_scanner import CorsScannerModule as CorsScanner
+from modules.vuln_scan.ssrf_check import SSRFCheckModule as SSRFCheck
 
 TOOL_REGISTRY = {
     # Phase 1 - Passive Recon (all implemented)
@@ -134,25 +137,25 @@ TOOL_REGISTRY = {
     'graphql_voyager': GraphqlVoyager,
     'arjun': Arjun,
 
-    # Phase 6 - Content Discovery (partial - wpscan only)
-    'ffuf': None,      # TODO: Implement FfufModule
-    'dirsearch': None, # TODO: Implement DirsearchModule
-    'feroxbuster': None, # TODO: Implement FeroxbusterModule
+    # Phase 6 - Content Discovery (all implemented)
+    'ffuf': Ffuf,
+    'dirsearch': Dirsearch,
+    'feroxbuster': Feroxbuster,
     'wpscan': Wpscan,
     's3scanner': None,
     'cloud_enum': None,
 
-    # Phase 7 - Vulnerability Scanning (partial - nuclei, subjack, dalfox only)
+    # Phase 7 - Vulnerability Scanning (all implemented)
     'nuclei': Nuclei,
     'nuclei_cms': Nuclei,
     'nuclei_auth': Nuclei,
     'subjack': Subjack,
-    'nikto': None,     # TODO: Implement NiktoModule
+    'nikto': Nikto,
     'dalfox': Dalfox,
-    'sqlmap': None,    # TODO: Implement SQLMapModule
-    'wpscan_vuln': None, # TODO: Implement WpscanVulnModule
-    'cors_scanner': None, # TODO: Implement
-    'ssrf_check': None,   # TODO: Implement
+    'sqlmap': SQLMap,
+    'wpscan_vuln': WpscanVuln,
+    'cors_scanner': CorsScanner,
+    'ssrf_check': SSRFCheck,
 }
 
 
