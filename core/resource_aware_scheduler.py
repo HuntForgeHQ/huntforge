@@ -179,7 +179,7 @@ class ToolProfiles:
 
         # Account for boolean flags with memory impact
         for param, spec in scalable_params.items():
-            if param not in param_overrides and 'memory_impact_mb' in spec:
+            if (param_overrides is None or param not in param_overrides) and 'memory_impact_mb' in spec:
                 # Apply impact for enabled features that are profile defaults
                 if spec.get('value') is True or (isinstance(spec.get('value'), str) and spec['value'].lower() == 'true'):
                     memory_mb += spec['memory_impact_mb']
