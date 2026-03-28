@@ -123,7 +123,7 @@ TOOL_REGISTRY = {
 
     # Phase 4 - Surface Intelligence (all implemented)
     'whatweb': WhatWeb,
-    'wappalyzer': Wappalyzer,
+    'wappalyzer_cli': Wappalyzer,
     'nmap_service': NmapService,
     'shodan_cli': ShodanCli,
     'censys_cli': CensysCli,

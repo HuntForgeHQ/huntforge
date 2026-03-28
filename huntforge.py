@@ -28,7 +28,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from core.orchestrator import Orchestrator
+from core.orchestrator_v2 import OrchestratorV2 as Orchestrator
 from core.scope_enforcer import ScopeEnforcer
 from core.scan_history import ScanHistory
 from core.tag_manager import TagManager
@@ -285,9 +285,9 @@ def build_parser():
 
     scan.add_argument(
         "--profile",
-        choices=["low", "mid", "high"],
-        default="mid",
-        help="Machine resource profile"
+        choices=["lite", "medium", "full"],
+        default="medium",
+        help="Machine resource profile (lite: 4-8GB, medium: 8-16GB, full: 16GB+)"
     )
 
     scan.add_argument(
