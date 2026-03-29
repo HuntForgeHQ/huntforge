@@ -290,7 +290,7 @@ class OrchestratorV2:
             if skip:
                 logger.info(f"Skipping {tool_name}: {reason}")
                 if tool_name in TOOL_REGISTRY:
-                    self.logger.log_tool_skip(tool_name, reason)
+                    self.logger.tool_skipped(tool_name, reason)
                 continue
 
             if tool_name not in TOOL_REGISTRY or TOOL_REGISTRY[tool_name] is None:
