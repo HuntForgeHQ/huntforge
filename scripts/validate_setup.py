@@ -15,12 +15,15 @@ import shutil
 from pathlib import Path
 import subprocess
 
+# Add current directory to Python path to enable core module imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 def check(description, condition, error_msg=""):
     """Print check result"""
-    status = "✓" if condition else "✗"
+    status = "[OK]" if condition else "[FAIL]"
     color = "\033[92m" if condition else "\033[91m"
     reset = "\033[0m"
-    print(f"  {color}[{status}]{reset} {description}")
+    print(f"  {color}{status}{reset} {description}")
     if not condition and error_msg:
         print(f"         {error_msg}")
     return condition
@@ -107,9 +110,9 @@ def main():
         print(f"  RAM: {mem.total/1024**3:.1f} GB total, {mem.available/1024**3:.1f} GB available")
         print(f"  CPU: {cpu_count} cores")
         if mem.total < 4 * 1024**3:
-            print("  \033[93m⚠ Warning: Less than 4GB RAM. Use --profile lite\033[0m")
+            print("  \033[93m[WARN] Less than 4GB RAM. Use --profile lite\033[0m")
         else:
-            print("  \033[92m✓ Sufficient RAM for bug bounty work\033[0m")
+            print("  \033[92m[OK] Sufficient RAM for bug bounty work\033[0m")
     except ImportError:
         check("psutil", False, "Install: pip3 install psutil")
         all_ok = False
@@ -135,12 +138,12 @@ def main():
     # Summary
     print("="*60)
     if all_ok:
-        print("\033[92m✓ Setup is valid! Ready to scan.\033[0m")
+        print("\033[92m[SUCCESS] Setup is valid! Ready to scan.\033[0m")
         print("\nNext steps:")
         print("  1. Edit ~/.huntforge/scope.json with your targets")
         print("  2. Run: python3 huntforge.py scan testaspnet.vulnweb.com --profile lite")
     else:
-        print("\033[91m✗ Some checks failed. Fix issues above.\033[0m")
+        print("\033[91m[FAILED] Some checks failed. Fix issues above.\033[0m")
         print("\nQuick fix:")
         print("  python3 -m pip install -r requirements.txt")
         print("  python3 scripts/installer.py --profile lite")
