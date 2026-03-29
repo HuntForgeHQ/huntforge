@@ -69,16 +69,45 @@ def main():
         all_ok = False
     print()
 
-    # 4. Tool installation
-    print("[4] Security tools (checking profile: lite)")
-    tools = ['subfinder', 'httpx', 'dnsx', 'nuclei', 'whatweb']
-    for tool in tools:
-        installed = shutil.which(tool) is not None
-        all_ok &= check(f"{tool}", installed, f"Install via: python3 scripts/installer.py --profile lite")
+    # 4. Docker container status
+    print("[4] Docker container (huntforge-kali)")
+    docker_ok = True
+    try:
+        result = subprocess.run(
+            ['docker', 'ps', '-q', '-f', 'name=huntforge-kali'],
+            capture_output=True,
+            text=True
+        )
+        container_running = result.returncode == 0 and bool(result.stdout.strip())
+        all_ok &= check("Docker container is running", container_running,
+                       "Start with: docker-compose up -d")
+        docker_ok = container_running
+    except FileNotFoundError:
+        check("Docker", False, "Install Docker Desktop or Docker Engine")
+        docker_ok = False
+        all_ok = False
     print()
 
-    # 5. Configuration
-    print("[5] Configuration files")
+    # 5. Tools inside container (only if Docker is running)
+    if docker_ok:
+        print("[5] Security tools (inside container)")
+        tools = ['subfinder', 'httpx', 'dnsx', 'nuclei', 'whatweb']
+        for tool in tools:
+            try:
+                result = subprocess.run(
+                    ['docker', 'exec', 'huntforge-kali', 'which', tool],
+                    capture_output=True,
+                    text=True
+                )
+                installed = result.returncode == 0
+                all_ok &= check(f"{tool}", installed,
+                               f"Install via: docker exec huntforge-kali python3 scripts/installer.py --profile lite")
+            except Exception:
+                all_ok = False
+        print()
+
+    # 6. Configuration
+    print("[6] Configuration files")
     config_ok = True
     if not Path("~/.huntforge/scope.json").expanduser().exists():
         check("~/.huntforge/scope.json", False, "Will be created on first scan")
@@ -101,8 +130,8 @@ def main():
     all_ok &= config_ok
     print()
 
-    # 6. System resources
-    print("[6] System resources")
+    # 7. System resources
+    print("[7] System resources")
     try:
         import psutil
         mem = psutil.virtual_memory()
@@ -118,8 +147,8 @@ def main():
         all_ok = False
     print()
 
-    # 7. Write permissions
-    print("[7] Directories")
+    # 8. Write permissions
+    print("[8] Directories")
     dirs_ok = True
     for d in ['output', 'logs', 'config']:
         path = Path(d)

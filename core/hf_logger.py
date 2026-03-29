@@ -96,12 +96,22 @@ class HFLogger:
         event.update(self._enrich_tool(tool_name))
         self._write_event(event)
 
-    def tool_complete(self, tool_name: str, findings_count: int):
+    def tool_complete(self, tool_name: str, result: dict, elapsed_seconds: float):
+        """
+        Log tool completion.
+
+        Parameters:
+            tool_name: Name of the tool
+            result: Tool result dict containing 'count' and other metadata
+            elapsed_seconds: Time taken to complete
+        """
+        findings_count = result.get('count', 0) if isinstance(result, dict) else (len(result) if hasattr(result, '__len__') else 0)
         event = {
             "event_type": "tool_complete",
             "tool": tool_name,
             "status": "success",
-            "findings": findings_count
+            "findings": findings_count,
+            "elapsed_seconds": elapsed_seconds
         }
         event.update(self._enrich_tool(tool_name))
         self._write_event(event)
@@ -115,12 +125,25 @@ class HFLogger:
         }
         self._write_event(event)
 
-    def tool_error(self, tool_name: str, error: Exception):
+    def tool_error(self, tool_name: str, error):
+        """
+        Log tool error.
+
+        Parameters:
+            tool_name: Name of the tool
+            error: Exception object or error string
+        """
+        if isinstance(error, Exception):
+            error_str = str(error)
+            error_type = error.__class__.__name__
+        else:
+            error_str = str(error)
+            error_type = "Error"
         event = {
             "event_type": "tool_error",
             "tool": tool_name,
             "status": "failed",
-            "error": str(error),
-            "error_type": error.__class__.__name__
+            "error": error_str,
+            "error_type": error_type
         }
         self._write_event(event)
