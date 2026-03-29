@@ -382,15 +382,16 @@ class OrchestratorV2:
             # Run the tool (this is blocking)
             logger.info(f"Running {tool_name}...")
             result = tool.run(
-                domain=self.domain,
+                target=self.domain,
                 output_dir=f"output/{self.domain}",
-                profile=self.profile,
+                tag_manager=self.tag_manager,
+                config=tool_config,
                 **input_files
             )
 
             # Record completion
             elapsed = time.time() - start_time
-            self.logger.log_tool_complete(tool_name, result, elapsed)
+            self.logger.tool_complete(tool_name, result, elapsed)
 
             # Extract tags from tool output
             tags = tool.extract_tags(result) if hasattr(tool, 'extract_tags') else {}
@@ -413,7 +414,7 @@ class OrchestratorV2:
 
         except Exception as e:
             logger.error(f"Tool {tool_name} failed: {e}")
-            self.logger.log_tool_error(tool_name, str(e))
+            self.logger.tool_error(tool_name, e)
 
         finally:
             self.scheduler.register_tool_end(tool_name)
