@@ -17,7 +17,17 @@ HuntForge runs **complete 7-phase reconnaissance** on **any laptop**:
 - ✅ **8 GB RAM** - Full scan in 4-8 hours
 - ✅ **16+ GB RAM** - Full scan in 1.5-3 hours
 
-**No Docker**, no heavy dependencies. Native installation, adaptive scheduling.
+**Docker-based isolation**. All 25+ tools run inside a pre-configured Kali container.
+
+---
+
+## **Prerequisites**
+
+- **Docker** + **Docker Compose** installed and running
+- **Python 3.9+** on host (for orchestrator only)
+- **Git** (to clone)
+
+Not familiar with Docker? [Get Docker](https://docs.docker.com/get-docker/) (5 min install).
 
 ---
 
@@ -40,20 +50,20 @@ HuntForge runs **complete 7-phase reconnaissance** on **any laptop**:
 git clone https://github.com/HuntForgeHQ/huntforge.git
 cd huntforge
 
-# 2. Install Python deps
-pip3 install -r requirements.txt
+# 2. Start the Kali container (builds on first run)
+docker-compose up -d
 
-# 3. Run installer (installs only tools you need)
-python3 scripts/installer.py --profile lite   # For 4-8 GB RAM
+# 3. Install tools inside the container (first time only)
+docker exec huntforge-kali python3 scripts/installer.py --profile lite   # For 4-8 GB RAM
 # or
-python3 scripts/installer.py --profile medium # For 8-16 GB RAM
+docker exec huntforge-kali python3 scripts/installer.py --profile medium # For 8-16 GB RAM
 # or
-python3 scripts/installer.py --profile full   # For 16+ GB RAM
+docker exec huntforge-kali python3 scripts/installer.py --profile full   # For 16+ GB RAM
 
 # 4. Configure scope (edit with your targets)
 nano ~/.huntforge/scope.json
 
-# 5. Run your first scan
+# 5. Run your first scan (from host, orchestrator talks to container)
 python3 huntforge.py scan testaspnet.vulnweb.com --profile lite
 
 # That's it!
@@ -124,16 +134,15 @@ python3 huntforge.py scan target.com --phase 7 --targets-from output/target/proc
 
 ### **3. Smart Installer**
 
-`scripts/installer.py` detects your OS and installs **only missing tools**:
-- Linux (Kali/Ubuntu): Uses `apt` where possible
-- macOS: Uses `brew`
-- WSL2: Uses `apt`
-- Manual Go/Pip fallbacks
+`scripts/installer.py` installs **only the tools you need** inside the Kali container:
+- Runs `apt` to install Kali tools (nmap, ffuf, dirsearch, etc.)
+- Uses `go install` for Go-based tools (subfinder, httpx, nuclei, etc.)
+- Optional pip installations for Python-based tools
 
 Profiles:
-- **lite** (5 tools): subfinder, httpx, dnsx, nuclei, whatweb - 500MB disk
-- **medium** (15 tools): Most discovery and some vuln scanning - 2GB disk
-- **full** (25 tools): Everything - 5GB disk
+- **lite** (8 tools): subfinder, httpx, dnsx, nuclei, whatweb, amass, crtsh, theharvester - ~1GB
+- **medium** (15 tools): Most discovery + some vuln scanning - ~2GB
+- **full** (25 tools): Everything - ~5GB
 
 ---
 
@@ -241,12 +250,26 @@ Legal practice targets:
 
 ## **Troubleshooting**
 
+### **"Docker container 'huntforge-kali' is not running"**
+```bash
+# Start the container
+docker-compose up -d
+
+# Check it's running
+docker ps | grep huntforge-kali
+
+# If container exists but tools not installed:
+docker exec huntforge-kali python3 scripts/installer.py --profile lite
+```
+
 ### **"Binary not found" errors**
 ```bash
 # Re-run installer to install missing tool
-python3 scripts/installer.py --profile full
-# Or install manually:
-sudo apt install <toolname>
+docker exec huntforge-kali python3 scripts/installer.py --profile full
+
+# Or enter container and check:
+docker exec -it huntforge-kali bash
+which subfinder
 ```
 
 ### **Memory errors on 4GB system**
