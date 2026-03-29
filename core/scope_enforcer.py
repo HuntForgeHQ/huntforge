@@ -16,7 +16,7 @@ class ScopeEnforcer:
         self._load_scopes()
 
     def _load_scopes(self):
-        """Loads allowed scopes from JSON. If it doesn't exist, create an empty one."""
+        """Loads allowed scopes from JSON. If it doesn't exist or is corrupted, recreate it."""
         if not os.path.exists(self.scope_file):
             os.makedirs(self.config_dir, exist_ok=True)
             with open(self.scope_file, 'w') as f:
@@ -28,9 +28,32 @@ class ScopeEnforcer:
                         }
                     }
                 }, f, indent=4)
-                
-        with open(self.scope_file, 'r') as f:
-            self.scopes = json.load(f).get("programs", {})
+
+        try:
+            with open(self.scope_file, 'r') as f:
+                self.scopes = json.load(f).get("programs", {})
+        except json.JSONDecodeError as e:
+            # Backup corrupted file and recreate default
+            import datetime
+            backup_path = f"{self.scope_file}.corrupt.{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            os.rename(self.scope_file, backup_path)
+            logger.warning(f"Scope file corrupted (JSON error: {e}). Backed up to {backup_path}")
+            # Create fresh default
+            os.makedirs(self.config_dir, exist_ok=True)
+            with open(self.scope_file, 'w') as f:
+                json.dump({
+                    "programs": {
+                        "Example Program": {
+                            "in_scope": ["*.example.com", "example.com"],
+                            "out_of_scope": ["admin.example.com"]
+                        }
+                    }
+                }, f, indent=4)
+            self.scopes = {"Example Program": {
+                "in_scope": ["*.example.com", "example.com"],
+                "out_of_scope": ["admin.example.com"]
+            }}
+            logger.info("Created new default scope file. Please edit ~/.huntforge/scope.json with your targets.")
 
     def _match(self, domain: str, pattern: str) -> bool:
         """Evaluates wildcard patterns like *.example.com against the domain."""
