@@ -151,6 +151,24 @@ def install_via_pip(tool: str, package_name: str = None) -> bool:
         log_error(f"Failed to install {tool}: {output}")
         return False
 
+def install_via_cargo(tool: str, package_name: str = None) -> bool:
+    """Install Rust tool via cargo"""
+    package = package_name or tool
+    log_info(f"Installing {tool} via cargo...")
+
+    # Check if cargo is installed
+    if not check_tool_installed('cargo'):
+        log_error("cargo (Rust) is not installed. Install Rust first or use apt/other method.")
+        return False
+
+    success, output = run_cmd(['cargo', 'install', package])
+    if success:
+        log_success(f"{tool} installed to ~/.cargo/bin")
+        return True
+    else:
+        log_error(f"Failed to install {tool}: {output}")
+        return False
+
 def ensure_git_binaries():
     """Ensure core Git binaries are in PATH"""
     home = Path.home()
@@ -176,33 +194,66 @@ class HuntForgeInstaller:
     # Tool installation strategies by OS
     TOOL_INSTALL_MAP = {
         'debian': {  # Kali, Ubuntu, Debian
+            # Phase 1 - Passive Recon
             'subfinder': ('apt', 'subfinder'),
-            'amass': ('go', 'github.com/owasp-amass/amass/v3/...@v3.18.3'),
+            'amass': ('go', 'github.com/OWASP/Amass/v3/cmd/amass@v3.18.3'),
             'assetfinder': ('go', 'github.com/tomnomnom/assetfinder@latest'),
-            'httpx': ('go', 'github.com/projectdiscovery/httpx/cmd/httpx@latest'),
-            'dnsx': ('apt', 'dnsx'),
-            'naabu': ('apt', 'naabu'),
-            'nuclei': ('apt', 'nuclei'),
-            'katana': ('apt', 'katana'),
-            'gau': ('go', 'github.com/lc/gau/v2/cmd/gau@latest'),
-            'ffuf': ('apt', 'ffuf'),
-            'dirsearch': ('apt', 'dirsearch'),
-            'wpscan': ('apt', 'wpscan'),
-            'sqlmap': ('apt', 'sqlmap'),
-            'dalfox': ('go', 'github.com/hahwul/dalfox/v2@latest'),
-            'gitleaks': ('apt', 'gitleaks'),
-            'trufflehog': ('apt', 'trufflehog'),
-            'nikto': ('apt', 'nikto'),
-            'whatweb': ('apt', 'whatweb'),
-            'wappalyzer': ('go', 'github.com/wappalyzer/wappalyzer-cli@latest'),
-            'nmap': ('apt', 'nmap'),
-            'gospider': ('go', 'github.com/jaeles-project/gospider@latest'),
-            'paramspider': ('go', 'github.com/ethicalhackingplayground/paramspider/cmd/paramspider@latest'),
-            'subjack': ('go', 'github.com/haccer/subjack/v2/cmd/subjack@latest'),
             'theharvester': ('apt', 'theharvester'),
             'findomain': ('apt', 'findomain'),
             'waybackurls': ('go', 'github.com/tomnomnom/waybackurls@latest'),
             'crtsh': None,  # API call, no binary needed
+            'chaos': ('go', 'github.com/projectdiscovery/chaos-client/cmd/chaos@latest'),
+
+            # Phase 2 - Secrets
+            'gitleaks': ('apt', 'gitleaks'),
+            'trufflehog': ('apt', 'trufflehog'),
+            'github_dorking': None,  # Python module, handled separately
+            'jsluice': ('go', 'github.com/BishopFox/jsluice/cmd/jsluice@latest'),
+            'secretfinder': ('pip', 'secretfinder'),
+            'linkfinder': ('pip', 'linkfinder'),
+
+            # Phase 3 - Discovery
+            'httpx': ('go', 'github.com/projectdiscovery/httpx/cmd/httpx@latest'),
+            'dnsx': ('apt', 'dnsx'),
+            'naabu': ('apt', 'naabu'),
+            'puredns': ('go', 'github.com/d3mondev/puredns/v2/cmd/puredns@latest'),
+            'gowitness': ('go', 'github.com/sensepost/gowitness@latest'),
+            'asnmap': ('go', 'github.com/projectdiscovery/asnmap/cmd/asnmap@latest'),
+
+            # Phase 4 - Surface Intel
+            'whatweb': ('apt', 'whatweb'),
+            'wappalyzer': ('go', 'github.com/wappalyzer/wappalyzer-cli@latest'),
+            'nmap': ('apt', 'nmap'),
+            'shodan': ('apt', 'shodan'),
+            'censys': ('pip', 'censys'),
+
+            # Phase 5 - Enumeration
+            'katana': ('apt', 'katana'),
+            'gau': ('go', 'github.com/lc/gau/v2/cmd/gau@latest'),
+            'gospider': ('go', 'github.com/jaeles-project/gospider@latest'),
+            'paramspider': ('go', 'github.com/ethicalhackingplayground/paramspider/cmd/paramspider@latest'),
+            'gf_extract': None,  # Part of gf (install gf separately if needed)
+            'graphql_voyager': ('pip', 'graphql-voyager'),
+            'arjun': ('pip', 'arjun'),
+
+            # Phase 6 - Content Discovery
+            'ffuf': ('apt', 'ffuf'),
+            'dirsearch': ('apt', 'dirsearch'),
+            'feroxbuster': ('apt', 'feroxbuster'),  # Try apt first, fallback to cargo if needed
+            'wpscan': ('apt', 'wpscan'),
+            's3scanner': ('pip', 's3scanner'),
+            'cloud_enum': ('pip', 'cloud-enum'),
+
+            # Phase 7 - Vuln Scan
+            'nuclei': ('apt', 'nuclei'),
+            'subjack': ('go', 'github.com/haccer/subjack/v2/cmd/subjack@latest'),
+            'nikto': ('apt', 'nikto'),
+            'dalfox': ('go', 'github.com/hahwul/dalfox/v2@latest'),
+            'sqlmap': ('apt', 'sqlmap'),
+            # Aliases - these don't need separate installation:
+            # nuclei_cms: uses 'nuclei' binary with different templates
+            # nuclei_auth: uses 'nuclei' binary with different templates
+            # wpscan_vuln: uses 'wpscan' binary with different flags
         },
         'macos': {  # macOS with Homebrew
             'subfinder': ('brew', 'subfinder'),
@@ -225,34 +276,45 @@ class HuntForgeInstaller:
     # NOTE: Profile equalization - all profiles install the full set of tools.
     # The profile-specific behavior (which tools run, with what parameters) is
     # controlled by config/profiles/{profile}.yaml at runtime.
+    #
+    # Only actual binaries/tools are listed here. Method-specific aliases like
+    # nuclei_cms, nuclei_auth, wpscan_vuln are NOT separate installations -
+    # they use the same binary with different configuration.
     PROFILE_TOOLS = {
         # All profiles get access to all tools
         'lite': [  # All tools (install everything)
-            'subfinder', 'amass', 'assetfinder', 'findomain', 'theharvester', 'waybackurls', 'crtsh',
-            'httpx', 'dnsx', 'naabu', 'puredns',
+            # Phase 1 - Passive Recon
+            'subfinder', 'amass', 'assetfinder', 'findomain', 'theharvester', 'waybackurls', 'crtsh', 'chaos',
+            # Phase 2 - Secrets
+            'gitleaks', 'trufflehog', 'jsluice', 'secretfinder', 'linkfinder', 'github_dorking',
+            # Phase 3 - Discovery
+            'httpx', 'dnsx', 'naabu', 'puredns', 'gowitness', 'asnmap',
+            # Phase 4 - Surface Intel
             'whatweb', 'wappalyzer', 'nmap', 'shodan', 'censys',
-            'katana', 'gau', 'gospider', 'paramspider', 'gf_extract', 'graphql_voyager', 'arjun',
+            # Phase 5 - Enumeration
+            'katana', 'gau', 'gospider', 'paramspider', 'arjun', 'gf_extract', 'graphql_voyager',
+            # Phase 6 - Content Discovery
             'ffuf', 'dirsearch', 'feroxbuster', 'wpscan', 's3scanner', 'cloud_enum',
-            'nuclei', 'nuclei_cms', 'nuclei_auth', 'subjack', 'nikto', 'dalfox', 'sqlmap', 'wpscan_vuln',
-            'gitleaks', 'trufflehog', 'github_dorking', 'jsluice', 'linkfinder', 'secretfinder',
+            # Phase 7 - Vuln Scan
+            'nuclei', 'subjack', 'nikto', 'dalfox', 'sqlmap',
         ],
         'medium': [  # All tools (install everything)
-            'subfinder', 'amass', 'assetfinder', 'findomain', 'theharvester', 'waybackurls', 'crtsh',
-            'httpx', 'dnsx', 'naabu', 'puredns',
+            'subfinder', 'amass', 'assetfinder', 'findomain', 'theharvester', 'waybackurls', 'crtsh', 'chaos',
+            'gitleaks', 'trufflehog', 'jsluice', 'secretfinder', 'linkfinder', 'github_dorking',
+            'httpx', 'dnsx', 'naabu', 'puredns', 'gowitness', 'asnmap',
             'whatweb', 'wappalyzer', 'nmap', 'shodan', 'censys',
-            'katana', 'gau', 'gospider', 'paramspider', 'gf_extract', 'graphql_voyager', 'arjun',
+            'katana', 'gau', 'gospider', 'paramspider', 'arjun', 'gf_extract', 'graphql_voyager',
             'ffuf', 'dirsearch', 'feroxbuster', 'wpscan', 's3scanner', 'cloud_enum',
-            'nuclei', 'nuclei_cms', 'nuclei_auth', 'subjack', 'nikto', 'dalfox', 'sqlmap', 'wpscan_vuln',
-            'gitleaks', 'trufflehog', 'github_dorking', 'jsluice', 'linkfinder', 'secretfinder',
+            'nuclei', 'subjack', 'nikto', 'dalfox', 'sqlmap',
         ],
         'full': [  # All tools (install everything)
-            'subfinder', 'amass', 'assetfinder', 'findomain', 'theharvester', 'waybackurls', 'crtsh',
-            'httpx', 'dnsx', 'naabu', 'puredns',
+            'subfinder', 'amass', 'assetfinder', 'findomain', 'theharvester', 'waybackurls', 'crtsh', 'chaos',
+            'gitleaks', 'trufflehog', 'jsluice', 'secretfinder', 'linkfinder', 'github_dorking',
+            'httpx', 'dnsx', 'naabu', 'puredns', 'gowitness', 'asnmap',
             'whatweb', 'wappalyzer', 'nmap', 'shodan', 'censys',
-            'katana', 'gau', 'gospider', 'paramspider', 'gf_extract', 'graphql_voyager', 'arjun',
+            'katana', 'gau', 'gospider', 'paramspider', 'arjun', 'gf_extract', 'graphql_voyager',
             'ffuf', 'dirsearch', 'feroxbuster', 'wpscan', 's3scanner', 'cloud_enum',
-            'nuclei', 'nuclei_cms', 'nuclei_auth', 'subjack', 'nikto', 'dalfox', 'sqlmap', 'wpscan_vuln',
-            'gitleaks', 'trufflehog', 'github_dorking', 'jsluice', 'linkfinder', 'secretfinder',
+            'nuclei', 'subjack', 'nikto', 'dalfox', 'sqlmap',
         ]
     }
 
@@ -300,10 +362,16 @@ class HuntForgeInstaller:
         """Check which tools are already installed"""
         log_info(f"Checking {len(tools)} tools for profile '{self.profile}'...")
 
+        # Tools that are Python modules (check via import)
+        python_modules = [
+            'crtsh', 'graphql_voyager', 's3scanner', 'cloud_enum',
+            'github_dorking', 'secretfinder', 'linkfinder', 'arjun',
+            'jsluice'  # jsluice has a binary but also has Python module
+        ]
+
         installed = {}
         for tool in tools:
-            if tool in ['crtsh', 'graphql_voyager', 's3scanner', 'cloud_enum']:
-                # Special Python tools that don't have standalone binaries
+            if tool in python_modules:
                 installed[tool] = self._check_python_module(tool)
             else:
                 installed[tool] = check_tool_installed(tool)
@@ -340,6 +408,11 @@ class HuntForgeInstaller:
 
             method, package = self.TOOL_INSTALL_MAP[self.os_family][tool]
 
+            # Skip tools with None method (API-only or manually installed)
+            if method is None:
+                log_info(f"Skipping {tool}: no automatic install (API-only or manual setup required)")
+                continue
+
             if method == 'apt':
                 success = install_via_apt(tool, package)
             elif method == 'go':
@@ -348,6 +421,8 @@ class HuntForgeInstaller:
                 success = install_via_brew(tool, package)
             elif method == 'pip':
                 success = install_via_pip(tool, package)
+            elif method == 'cargo':
+                success = install_via_cargo(tool, package)
             else:
                 log_warning(f"Unknown install method {method} for {tool}")
                 success = False
