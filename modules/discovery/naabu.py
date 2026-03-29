@@ -10,7 +10,7 @@ class NaabuModule(BaseModule):
         self.config = config or {}
         
         host_output_file = os.path.join(output_dir, 'raw', 'naabu.txt')
-        container_output_file = f"/{host_output_file.replace('\\', '/')}" 
+        container_output_file = host_output_file.replace('\\', '/')
         os.makedirs(os.path.dirname(host_output_file), exist_ok=True)
 
         command = self.build_command(target, container_output_file)

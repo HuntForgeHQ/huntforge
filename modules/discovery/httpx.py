@@ -19,13 +19,13 @@ class HttpxModule(BaseModule):
         
         # Input file from subfinder
         host_input_file = os.path.join(output_dir, 'raw', 'subfinder.txt')
-        container_input_file = f"/{host_input_file.replace('\\', '/')}"
+        container_input_file = host_input_file.replace('\\', '/')
         
         if not os.path.exists(host_input_file):
             return {'results': [], 'count': 0, 'requests_made': 0}
             
         host_output_file = os.path.join(output_dir, 'raw', 'httpx.json')
-        container_output_file = f"/{host_output_file.replace('\\', '/')}" 
+        container_output_file = host_output_file.replace('\\', '/')
         
         os.makedirs(os.path.dirname(host_output_file), exist_ok=True)
 

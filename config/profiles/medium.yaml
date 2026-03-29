@@ -1,5 +1,5 @@
 # Resource Profile: Medium (8-16 GB RAM)
-# Balanced approach. Good performance without overwhelming system.
+# Balanced: more tools than lite, but still selective to avoid overload.
 
 resource_limits:
   max_concurrent_tools: 4
@@ -7,53 +7,78 @@ resource_limits:
   max_cpu_percent: 85
   safety_margin_percent: 20
 
+tool_selection:
+  # Phase 1 - Passive Recon: More sources, still avoid heavy ones
+  phase_1_passive_recon:
+    enabled_tools: ['subfinder', 'amass', 'assetfinder', 'findomain', 'theharvester']
+    # Skipped: chaos (API), waybackurls (optional), crtsh (already included via amass)
+
+  # Phase 2 - Secrets & OSINT: Add trufflehog
+  phase_2_secrets_osint:
+    enabled_tools: ['gitleaks', 'trufflehog', 'jsluice']
+    # Skipped: github_dorking (optional), secretfinder, linkfinder
+
+  # Phase 3 - Live Discovery: Full probing
+  phase_3_asset_discovery:
+    enabled_tools: ['httpx', 'dnsx', 'naabu', 'puredns']
+    # Skipped: gowitness (screenshots heavy), asnmap (optional)
+
+  # Phase 4 - Surface Intel: Two scanners
+  phase_4_surface_intelligence:
+    enabled_tools: ['whatweb', 'wappalyzer_cli']
+    # Skipped: nmap_service (slow), shodan_cli (API), censys_cli (API)
+
+  # Phase 5 - Enumeration: Multiple crawlers
+  phase_5_enumeration:
+    enabled_tools: ['katana', 'gau', 'gospider', 'paramspider']
+    # Skipped: gf_extract (post-processing), graphql_voyager (conditional), arjun (conditional)
+
+  # Phase 6 - Content Discovery: Multiple wordlists
+  phase_6_content_discovery:
+    enabled_tools: ['ffuf', 'dirsearch', 'feroxbuster']
+    # Skipped: wpscan (conditional), s3scanner (conditional), cloud_enum (conditional)
+
+  # Phase 7 - Vuln Scan: Broad coverage
+  phase_7_vuln_scan:
+    enabled_tools: ['nuclei', 'subjack', 'nikto', 'dalfox']
+    # Skipped: sqlmap (very slow, optional), nuclei_cms (conditional), nuclei_auth (conditional), wpscan_vuln (conditional), cors_scanner (conditional), ssrf_check (conditional)
+
 tool_overrides:
-  # Phase 1
-  subfinder:
-    threads: 25
-    rate_limit: 100
-  amass:
-    threads: 8
+  # Phase 5 - Medium depth
+  katana:
+    depth: 4              # Near-full depth
+    concurrency: 10
+  gospider:
+    concurrent: 10
+    depth: 4
 
   # Phase 3
   httpx:
-    threads: 30
+    threads: 50
     rate_limit: 150
   dnsx:
-    threads: 50
+    threads: 100
   naabu:
-    rate: 2000
-
-  # Phase 5
-  katana:
-    depth: 3
-    concurrency: 8
-  gospider:
-    concurrent: 8
-    depth: 3
+    rate: 3000
 
   # Phase 6
   ffuf:
-    threads: 50
+    threads: 80
   dirsearch:
     threads: 30
   feroxbuster:
-    threads: 40
-    depth: 3
+    threads: 60
+    depth: 4
 
   # Phase 7
   nuclei:
     concurrency: 50
     bulk_size: 100
-  sqlmap:
-    threads: 3
-    level: 2
-    risk: 2
   dalfox:
-    worker: 50
+    worker: 80
 
 scheduler:
-  light_phase_concurrency: 8
-  heavy_phase_concurrency: 2
+  light_phase_concurrency: 8   # More parallelism
+  heavy_phase_concurrency: 2   # Some parallel heavy tools
   enable_throttling: true
   respect_user_activity: true

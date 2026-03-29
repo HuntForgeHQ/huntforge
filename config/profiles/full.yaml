@@ -1,5 +1,5 @@
 # Resource Profile: Full (16+ GB RAM)
-# No artificial limits. Run all tools at full capacity.
+# No artificial limits. All tools enabled at full capacity.
 
 resource_limits:
   max_concurrent_tools: 6
@@ -7,15 +7,38 @@ resource_limits:
   max_cpu_percent: 90
   safety_margin_percent: 15
 
+tool_selection:
+  # All tools enabled - no filtering
+  phase_1_passive_recon:
+    enabled_tools: ['subfinder', 'amass', 'crtsh', 'theharvester', 'assetfinder', 'chaos', 'findomain', 'waybackurls']
+
+  phase_2_secrets_osint:
+    enabled_tools: ['gitleaks', 'trufflehog', 'github_dorking', 'secretfinder', 'jsluice', 'linkfinder']
+
+  phase_3_asset_discovery:
+    enabled_tools: ['httpx', 'dnsx', 'naabu', 'puredns', 'gowitness', 'asnmap']
+
+  phase_4_surface_intelligence:
+    enabled_tools: ['whatweb', 'wappalyzer_cli', 'nmap_service', 'shodan_cli', 'censys_cli']
+
+  phase_5_enumeration:
+    enabled_tools: ['katana', 'gau', 'paramspider', 'gospider', 'gf_extract', 'graphql_voyager', 'arjun']
+
+  phase_6_content_discovery:
+    enabled_tools: ['ffuf', 'dirsearch', 'feroxbuster', 'wpscan', 's3scanner', 'cloud_enum']
+
+  phase_7_vuln_scan:
+    enabled_tools: ['nuclei', 'nuclei_cms', 'nuclei_auth', 'subjack', 'nikto', 'dalfox', 'sqlmap', 'wpscan_vuln', 'cors_scanner', 'ssrf_check']
+
 tool_overrides:
-  # Phase 1
+  # Phase 1 - High concurrency
   subfinder:
     threads: 100
     rate_limit: 300
   amass:
     threads: 15
 
-  # Phase 3
+  # Phase 3 - Fast discovery
   httpx:
     threads: 100
     rate_limit: 300
@@ -24,7 +47,7 @@ tool_overrides:
   naabu:
     rate: 5000
 
-  # Phase 5
+  # Phase 5 - Deep crawling
   katana:
     depth: 5
     concurrency: 20
@@ -32,7 +55,7 @@ tool_overrides:
     concurrent: 20
     depth: 5
 
-  # Phase 6
+  # Phase 6 - Aggressive content discovery
   ffuf:
     threads: 150
   dirsearch:
@@ -41,7 +64,7 @@ tool_overrides:
     threads: 150
     depth: 5
 
-  # Phase 7
+  # Phase 7 - Full power
   nuclei:
     concurrency: 100
     bulk_size: 200
@@ -53,7 +76,7 @@ tool_overrides:
     worker: 150
 
 scheduler:
-  light_phase_concurrency: 12
-  heavy_phase_concurrency: 4
-  enable_throttling: true  # Still respect system if user active
+  light_phase_concurrency: 12   # Max parallelism
+  heavy_phase_concurrency: 4    # Several heavy tools together
+  enable_throttling: true       # Still respect system if user active
   respect_user_activity: true

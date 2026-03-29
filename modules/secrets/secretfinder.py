@@ -11,7 +11,7 @@ class SecretfinderModule(BaseModule):
         self.config = config or {}
         
         host_out = os.path.join(output_dir, 'raw', 'secretfinder.html')
-        container_out = f"/{host_out.replace('\\', '/')}"
+        container_out = host_out.replace('\\', '/')
         os.makedirs(os.path.dirname(host_out), exist_ok=True)
         
         # We assume target is a domain, but SecretFinder usually takes a URL

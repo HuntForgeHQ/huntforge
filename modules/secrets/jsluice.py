@@ -11,7 +11,7 @@ class JsluiceModule(BaseModule):
         self.config = config or {}
         
         host_out = os.path.join(output_dir, 'raw', 'jsluice.json')
-        container_out = f"/{host_out.replace('\\', '/')}"
+        container_out = host_out.replace('\\', '/')
         os.makedirs(os.path.dirname(host_out), exist_ok=True)
         
         self._run_subprocess(self.build_command(f"https://{target}", container_out))
