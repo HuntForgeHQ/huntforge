@@ -47,7 +47,7 @@ class SubfinderModule(BaseModule):
         # Windows Host Path: where the python script creates dirs and reads
         # Container Path: where the tool writes inside Docker
         host_output_file = os.path.join(output_dir, 'raw', 'subfinder.txt')
-        container_output_file = f"/{host_output_file.replace('\\', '/')}" 
+        container_output_file = host_output_file.replace('\\', '/')
         
         os.makedirs(os.path.dirname(host_output_file), exist_ok=True)
 

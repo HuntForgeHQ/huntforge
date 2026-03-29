@@ -6,14 +6,14 @@ from core.exceptions import EmptyOutputError
 class GitleaksModule(BaseModule):
     def build_command(self, target: str, container_out: str) -> list:
         # gitleaks detect --source /output/example.com --report-path container_out --no-git
-        source_dir = f"/output/{target}"
+        source_dir = f"output/{target}"
         return ['gitleaks', 'detect', '--source', source_dir, '--report-path', container_out, '--no-git', '-v']
 
     def run(self, target: str, output_dir: str, tag_manager, config: dict = None) -> dict:
         self.config = config or {}
         
         host_out = os.path.join(output_dir, 'raw', 'gitleaks.json')
-        container_out = f"/{host_out.replace('\\', '/')}"
+        container_out = host_out.replace('\\', '/')
         os.makedirs(os.path.dirname(host_out), exist_ok=True)
         
         # We don't fail if the tool exit code is 1 (gitleaks returns 1 if leaks found)

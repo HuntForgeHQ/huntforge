@@ -183,6 +183,9 @@ class OrchestratorV2:
         with open(self.methodology_path) as f:
             self.methodology = yaml.safe_load(f)
 
+        # Load profile configuration (tool selection + overrides)
+        self.profile_config = self._load_profile_config()
+
         # Initialize core components
         self.tag_manager = TagManager()
         self.budget_tracker = BudgetTracker()
@@ -208,6 +211,30 @@ class OrchestratorV2:
         """Handle shutdown signals gracefully"""
         logger.warning(f"Received signal {signum}, initiating graceful shutdown...")
         self._shutdown = True
+
+    def _load_profile_config(self) -> dict:
+        """Load profile configuration from YAML"""
+        profile_path = Path(f"config/profiles/{self.profile}.yaml")
+        if not profile_path.exists():
+            logger.warning(f"Profile config not found: {profile_path}. Using empty defaults.")
+            return {
+                'tool_selection': {},
+                'tool_overrides': {},
+                'scheduler': {}
+            }
+
+        try:
+            with open(profile_path) as f:
+                config = yaml.safe_load(f)
+            logger.info(f"Loaded profile configuration from {profile_path}")
+            return config
+        except Exception as e:
+            logger.error(f"Failed to load profile config: {e}")
+            return {
+                'tool_selection': {},
+                'tool_overrides': {},
+                'scheduler': {}
+            }
 
     def load_checkpoint(self) -> bool:
         """Load existing checkpoint if exists"""
@@ -269,7 +296,8 @@ class OrchestratorV2:
         logger.info(f"Starting phase: {phase_config.get('label', phase_name)}")
         self.current_phase = phase_name
 
-        tools = phase_config.get('tools', [])
+        # Support both 'tools' (phases 1-4) and 'conditional_tools' (phases 5-7)
+        tools = phase_config.get('tools') or phase_config.get('conditional_tools') or []
         input_files = phase_config.get('input_files', {})
 
         # Filter tools based on conditional execution
@@ -291,6 +319,16 @@ class OrchestratorV2:
                 logger.info(f"Skipping {tool_name}: {reason}")
                 if tool_name in TOOL_REGISTRY:
                     self.logger.tool_skipped(tool_name, reason)
+                continue
+
+            # Check profile-based tool enablement (tool_selection)
+            tool_selection = self.profile_config.get('tool_selection', {})
+            phase_selection = tool_selection.get(phase_name, {})
+            enabled_tools = phase_selection.get('enabled_tools', [])
+            if enabled_tools and tool_name not in enabled_tools:
+                logger.info(f"Skipping {tool_name}: not enabled in '{self.profile}' profile")
+                if tool_name in TOOL_REGISTRY:
+                    self.logger.tool_skipped(tool_name, f"Profile filter: {self.profile}")
                 continue
 
             if tool_name not in TOOL_REGISTRY or TOOL_REGISTRY[tool_name] is None:
@@ -366,6 +404,15 @@ class OrchestratorV2:
         start_time = time.time()
 
         try:
+            # Apply profile-specific parameter overrides (if any)
+            tool_overrides = self.profile_config.get('tool_overrides', {}).get(tool_name, {})
+            if tool_overrides:
+                # Merge into tool_config['config'] sub-dictionary
+                if 'config' not in tool_config:
+                    tool_config['config'] = {}
+                tool_config['config'].update(tool_overrides)
+                logger.info(f"Applied profile overrides for {tool_name}: {tool_overrides}")
+
             # Instantiate tool
             tool = tool_class()
 

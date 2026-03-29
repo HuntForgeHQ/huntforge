@@ -11,7 +11,7 @@ class GospiderModule(BaseModule):
         
         # Gospider outputs to a directory named after the domain
         host_out = os.path.join(output_dir, 'raw', 'gospider')
-        container_out = f"/{host_out.replace('\\', '/')}"
+        container_out = host_out.replace('\\', '/')
         os.makedirs(host_out, exist_ok=True)
         
         self._run_subprocess(self.build_command(target, container_out))

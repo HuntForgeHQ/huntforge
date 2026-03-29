@@ -48,6 +48,14 @@ class TagManager:
         # Internal store — dict of tag_name → tag_data
         self._tags = {}
 
+    @property
+    def tags(self):
+        return self._tags
+
+    @tags.setter
+    def tags(self, value):
+        self._tags = value
+
     # ── Write ─────────────────────────────────────────────────────
 
     def add(self, tag: str, confidence: str = 'low',

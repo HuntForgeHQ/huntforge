@@ -21,10 +21,10 @@ class NucleiModule(BaseModule):
         self.config = config or {}
         
         host_input_file = os.path.join(output_dir, 'raw', 'httpx.json')
-        container_input_file = f"/{host_input_file.replace('\\', '/')}"
+        container_input_file = host_input_file.replace('\\', '/')
         
         host_output_file = os.path.join(output_dir, 'raw', 'nuclei.json')
-        container_output_file = f"/{host_output_file.replace('\\', '/')}" 
+        container_output_file = host_output_file.replace('\\', '/')
         os.makedirs(os.path.dirname(host_output_file), exist_ok=True)
 
         # If live web targets exist, use them. Otherwise scan the raw domain.

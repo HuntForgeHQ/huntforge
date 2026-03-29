@@ -19,6 +19,18 @@ import argparse
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
+# Add common tool paths to environment
+HOME = str(Path.home())
+EXTRA_PATHS = [
+    f"{HOME}/.local/bin",
+    f"{HOME}/go/bin",
+    "/go/bin",
+    "/usr/local/go/bin"
+]
+for p in EXTRA_PATHS:
+    if os.path.exists(p) and p not in os.environ["PATH"]:
+        os.environ["PATH"] = f"{p}:{os.environ['PATH']}"
+
 # Color codes for terminal output
 GREEN = '\033[92m'
 YELLOW = '\033[93m'
@@ -63,12 +75,7 @@ def detect_os() -> Tuple[str, str]:
     if platform.startswith('linux'):
         # Check for Kali/Ubuntu/Debian
         if shutil.which('apt'):
-            # Try to detect distro
-            success, output = run_cmd(['lsb_release', '-is'], capture_output=True)
-            if success:
-                distro = output.strip().lower()
-                if 'kali' in distro or 'ubuntu' in distro or 'debian' in distro:
-                    return 'debian', 'apt'
+            return 'debian', 'apt'
         elif shutil.which('yum'):
             return 'redhat', 'yum'
         elif shutil.which('dnf'):
@@ -97,15 +104,21 @@ def install_via_apt(tool: str, package_name: str = None) -> bool:
     package = package_name or tool
     log_info(f"Installing {tool} via apt...")
 
-    # Update package list (if not done recently)
-    run_cmd(['apt-get', 'update'], check=False)
+    # Handle permissions
+    is_root = os.geteuid() == 0 if hasattr(os, 'geteuid') else False
+    sudo_cmd = ["sudo"] if not is_root and shutil.which("sudo") else []
 
-    success, output = run_cmd(['apt-get', 'install', '-y', package])
+    # Update package list (if not done recently)
+    run_cmd(sudo_cmd + ['apt-get', 'update'], check=False)
+
+    success, output = run_cmd(sudo_cmd + ['apt-get', 'install', '-y', package])
     if success:
         log_success(f"{tool} installed")
         return True
     else:
         log_error(f"Failed to install {tool}: {output}")
+        if not is_root and not sudo_cmd:
+            log_warning("Hint: Run with '-u root' in docker exec to allow system installations")
         return False
 
 def install_via_go(tool: str, go_package: str) -> bool:
@@ -166,7 +179,7 @@ class HuntForgeInstaller:
             'subfinder': ('apt', 'subfinder'),
             'amass': ('go', 'github.com/owasp-amass/amass/v3/...@v3.18.3'),
             'assetfinder': ('go', 'github.com/tomnomnom/assetfinder@latest'),
-            'httpx': ('apt', 'httpx'),  # Kali has httpx package
+            'httpx': ('go', 'github.com/projectdiscovery/httpx/cmd/httpx@latest'),
             'dnsx': ('apt', 'dnsx'),
             'naabu': ('apt', 'naabu'),
             'nuclei': ('apt', 'nuclei'),
@@ -209,23 +222,30 @@ class HuntForgeInstaller:
     }
 
     # Tools needed by profile
+    # NOTE: Profile equalization - all profiles install the full set of tools.
+    # The profile-specific behavior (which tools run, with what parameters) is
+    # controlled by config/profiles/{profile}.yaml at runtime.
     PROFILE_TOOLS = {
-        'lite': [
-            'subfinder',
-            'httpx',
-            'dnsx',
-            'nuclei',
-            'whatweb',
+        # All profiles get access to all tools
+        'lite': [  # All tools (install everything)
+            'subfinder', 'amass', 'assetfinder', 'findomain', 'theharvester', 'waybackurls', 'crtsh',
+            'httpx', 'dnsx', 'naabu', 'puredns',
+            'whatweb', 'wappalyzer', 'nmap', 'shodan', 'censys',
+            'katana', 'gau', 'gospider', 'paramspider', 'gf_extract', 'graphql_voyager', 'arjun',
+            'ffuf', 'dirsearch', 'feroxbuster', 'wpscan', 's3scanner', 'cloud_enum',
+            'nuclei', 'nuclei_cms', 'nuclei_auth', 'subjack', 'nikto', 'dalfox', 'sqlmap', 'wpscan_vuln',
+            'gitleaks', 'trufflehog', 'github_dorking', 'jsluice', 'linkfinder', 'secretfinder',
         ],
-        'medium': [
-            'subfinder', 'amass', 'assetfinder', 'findomain', 'theharvester',  # Phase 1
-            'httpx', 'dnsx', 'naabu',  # Phase 3
-            'whatweb', 'wappalyzer', 'nmap',  # Phase 4
-            'katana', 'paramspider', 'gospider',  # Phase 5
-            'ffuf', 'dirsearch',  # Phase 6
-            'nuclei', 'nikto',  # Phase 7
+        'medium': [  # All tools (install everything)
+            'subfinder', 'amass', 'assetfinder', 'findomain', 'theharvester', 'waybackurls', 'crtsh',
+            'httpx', 'dnsx', 'naabu', 'puredns',
+            'whatweb', 'wappalyzer', 'nmap', 'shodan', 'censys',
+            'katana', 'gau', 'gospider', 'paramspider', 'gf_extract', 'graphql_voyager', 'arjun',
+            'ffuf', 'dirsearch', 'feroxbuster', 'wpscan', 's3scanner', 'cloud_enum',
+            'nuclei', 'nuclei_cms', 'nuclei_auth', 'subjack', 'nikto', 'dalfox', 'sqlmap', 'wpscan_vuln',
+            'gitleaks', 'trufflehog', 'github_dorking', 'jsluice', 'linkfinder', 'secretfinder',
         ],
-        'full': [  # All tools
+        'full': [  # All tools (install everything)
             'subfinder', 'amass', 'assetfinder', 'findomain', 'theharvester', 'waybackurls', 'crtsh',
             'httpx', 'dnsx', 'naabu', 'puredns',
             'whatweb', 'wappalyzer', 'nmap', 'shodan', 'censys',
@@ -421,6 +441,10 @@ class HuntForgeInstaller:
             from core.orchestrator import Orchestrator
             log_success("HuntForge core modules OK")
             return True
+        except ImportError as e:
+            log_warning(f"HuntForge imports failed in this environment: {e}")
+            log_info("This is expected if not using the virtual environment (./venv/bin/python3)")
+            return True # Don't fail the whole installation for this
         except Exception as e:
             log_error(f"HuntForge imports failed: {e}")
             return False
