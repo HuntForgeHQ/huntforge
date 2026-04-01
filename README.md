@@ -86,7 +86,7 @@
 
 ### AI Integration (Optional)
 - Generate custom methodologies from natural language prompts via Ollama
-- Claude-powered executive report generation
+- Gemini-powered executive report generation
 - Smart recon prioritization based on findings
 
 ### Web Dashboard
@@ -295,7 +295,7 @@ output/
     │
     ├── logs/
     │   ├── scan_events.jsonl       # One JSON per event
-    │   └── ai_report.md            # Claude-generated report
+    │   └── ai_report.md            # Gemini-generated report
     │
     └── checkpoint.json              # Resume state (after each tool)
 ```
@@ -449,7 +449,7 @@ python3 huntforge.py scan example.com --profile medium
 # │   └── scan_summary.json
 # └── logs/
 #     ├── scan_events.jsonl   # Structured event log
-#     └── ai_report.md        # Claude executive summary
+#     └── ai_report.md        # Gemini executive summary
 ```
 
 ### Command Reference
@@ -538,7 +538,7 @@ Profiles in `config/profiles/{lite,medium,full}.yaml` control concurrency and to
 ```json
 {
   "default_profile": "medium",
-  "anthropic_api_key": "your-key",
+  "gemini_api_key": "your-key",
   "shodan_api_key": "your-key",
   "strict_scope": true
 }
@@ -893,7 +893,7 @@ huntforge/
 │
 ├── ai/                       # AI integration
 │   ├── methodology_engine.py # Ollama → YAML
-│   └── report_generator.py   # Claude → HTML
+│   └── report_generator.py   # Gemini → Markdown
 │
 ├── dashboard/                # Web UI
 │   ├── app.py
