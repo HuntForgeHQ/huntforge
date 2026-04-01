@@ -325,9 +325,36 @@ class HuntForgeInstaller:
     # Only actual binaries/tools are listed here. Method-specific aliases like
     # nuclei_cms, nuclei_auth, wpscan_vuln are NOT separate installations -
     # they use the same binary with different configuration.
-    PROFILE_TOOLS = {
-        # All profiles get access to all tools
-        'lite': [  # All tools (install everything)
+
+    # PROFESSIONAL PROFILE: What real bug bounty hunters actually use (16 tools)
+    PROFESSIONAL_TOOLS = [
+        # Phase 1 - Passive Recon (3 tools)
+        'subfinder', 'amass', 'crtsh',
+
+        # Phase 2 - Secrets (2 tools)
+        'gitleaks', 'trufflehog',
+
+        # Phase 3 - Live Discovery (2 tools)
+        'httpx', 'naabu',
+
+        # Phase 4 - Surface Intel (2 tools)
+        'whatweb', 'wappalyzer_cli',
+
+        # Phase 5 - Enumeration (3-4 tools)
+        'katana', 'gau', 'paramspider', 'arjun', 'graphql_voyager',
+
+        # Phase 6 - Content Discovery (1-2 tools)
+        'ffuf', 'wpscan',
+
+        # Phase 7 - Vuln Scan (3-4 tools)
+        'nuclei', 'subjack', 'dalfox', 'sqlmap',
+    ]
+
+    # LITE PROFILE: Minimal setup for testing
+    LITE_TOOLS = PROFESSIONAL_TOOLS  # Same as professional
+
+    # FULL/MEDIUM PROFILE: Everything (40+ tools) - not recommended but available
+    FULL_TOOLS = [
             # Phase 1 - Passive Recon
             'subfinder', 'amass', 'assetfinder', 'findomain', 'theharvester', 'waybackurls', 'crtsh', 'chaos',
             # Phase 2 - Secrets
@@ -343,24 +370,10 @@ class HuntForgeInstaller:
             # Phase 7 - Vuln Scan
             'nuclei', 'subjack', 'nikto', 'dalfox', 'sqlmap',
         ],
-        'medium': [  # All tools (install everything)
-            'subfinder', 'amass', 'assetfinder', 'findomain', 'theharvester', 'waybackurls', 'crtsh', 'chaos',
-            'gitleaks', 'trufflehog', 'jsluice', 'secretfinder', 'linkfinder', 'github_dorking',
-            'httpx', 'dnsx', 'naabu', 'puredns', 'gowitness', 'asnmap',
-            'whatweb', 'wappalyzer_cli', 'nmap_service', 'shodan_cli', 'censys_cli',
-            'katana', 'gau', 'gospider', 'paramspider', 'arjun', 'gf_extract', 'graphql_voyager',
-            'ffuf', 'dirsearch', 'feroxbuster', 'wpscan', 's3scanner', 'cloud_enum',
-            'nuclei', 'subjack', 'nikto', 'dalfox', 'sqlmap',
-        ],
-        'full': [  # All tools (install everything)
-            'subfinder', 'amass', 'assetfinder', 'findomain', 'theharvester', 'waybackurls', 'crtsh', 'chaos',
-            'gitleaks', 'trufflehog', 'jsluice', 'secretfinder', 'linkfinder', 'github_dorking',
-            'httpx', 'dnsx', 'naabu', 'puredns', 'gowitness', 'asnmap',
-            'whatweb', 'wappalyzer_cli', 'nmap_service', 'shodan_cli', 'censys_cli',
-            'katana', 'gau', 'gospider', 'paramspider', 'arjun', 'gf_extract', 'graphql_voyager',
-            'ffuf', 'dirsearch', 'feroxbuster', 'wpscan', 's3scanner', 'cloud_enum',
-            'nuclei', 'subjack', 'nikto', 'dalfox', 'sqlmap',
-        ]
+        'professional': self.PROFESSIONAL_TOOLS,
+        'lite': self.LITE_TOOLS,
+        'medium': self.FULL_TOOLS,
+        'full': self.FULL_TOOLS,
     }
 
     def __init__(self, profile: str = 'lite', download_wordlists: bool = False):
