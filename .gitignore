@@ -205,3 +205,55 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# ============================================
+# HuntForge Specific
+# ============================================
+
+# Scan output directories (may contain sensitive findings)
+output/
+**/output/
+
+# User configuration and secrets
+~/.huntforge/
+.config/huntforge/
+.credstore/
+
+# Generated methodologies
+config/generated_methodology.yaml
+
+# Scan history database
+data/scan_history.db
+
+# Checkpoint files (for resuming scans)
+**/checkpoint.json
+
+# Log files
+*.log
+logs/
+
+# Docker volumes (if used)
+docker-data/
+
+# Temporary scan files
+tmp/
+temp/
+*.tmp
+
+# Test targets (if created locally)
+test-targets/
+
+# Wordlists (downloaded by users, too large for git)
+wordlists/
+SecLists/
+
+# Nuclei templates (downloaded separately)
+.nuclei/
+
+# Ollama models (downloaded separately)
+.ollama/
+
+# API key backups
+apikeys.txt
+secrets.json
+credentials.yaml
