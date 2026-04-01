@@ -369,11 +369,14 @@ class HuntForgeInstaller:
             'ffuf', 'dirsearch', 'feroxbuster', 'wpscan', 's3scanner', 'cloud_enum',
             # Phase 7 - Vuln Scan
             'nuclei', 'subjack', 'nikto', 'dalfox', 'sqlmap',
-        ],
-        'professional': self.PROFESSIONAL_TOOLS,
-        'lite': self.LITE_TOOLS,
-        'medium': self.FULL_TOOLS,
-        'full': self.FULL_TOOLS,
+        ]
+
+    # Profile to tools mapping
+    PROFILE_TOOLS = {
+        'professional': PROFESSIONAL_TOOLS,
+        'lite': LITE_TOOLS,
+        'medium': FULL_TOOLS,
+        'full': FULL_TOOLS,
     }
 
     def __init__(self, profile: str = 'lite', download_wordlists: bool = False):
