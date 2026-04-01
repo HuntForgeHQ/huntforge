@@ -11,10 +11,10 @@
 ## Table of Contents
 
 1. [Team Structure & Ownership Map](#1-team-structure--ownership-map)
-2. [Member 1 — Red Team Lead / Core Engine](#2-member-1--red-team-lead--core-engine)
-3. [Member 2 — Red Team Partner / Tool Modules & AI](#3-member-2--red-team-partner--tool-modules--ai)
-4. [Member 3 — Blue Team 1 / Logging & Detection](#4-member-3--blue-team-1--logging--detection)
-5. [Member 4 — Blue Team 2 / Dashboard, Scope & Onboarding](#5-member-4--blue-team-2--dashboard-scope--onboarding)
+2. [Nimesh — Red Team Lead / Core Engine](#2-member-1--red-team-lead--core-engine)
+3. [Neel — Red Team Partner / Tool Modules & AI](#3-member-2--red-team-partner--tool-modules--ai)
+4. [Prince — Blue Team 1 / Logging & Detection](#4-member-3--blue-team-1--logging--detection)
+5. [Abhishek — Blue Team 2 / Dashboard, Scope & Onboarding](#5-member-4--blue-team-2--dashboard-scope--onboarding)
 6. [The Logging System — How It All Connects](#6-the-logging-system--how-it-all-connects)
 7. [Team Git Workflow & Integration Guide](#7-team-git-workflow--integration-guide)
 8. [Complete Project Structure](#8-complete-project-structure)
@@ -39,7 +39,7 @@ HuntForge is large enough that four people working in parallel can each own a me
 
 ### 1.2 Team Roles at a Glance
 
-| Component | Member 1 (Red Lead) | Member 2 (Red) | Member 3 (Blue) | Member 4 (Blue) |
+| Component | Nimesh (Red Lead) | Neel (Red) | Prince (Blue) | Abhishek (Blue) |
 |---|---|---|---|---|
 | Core orchestrator | ✅ Owner | 📖 Reviewer | 📖 Reader | 📖 Reader |
 | Resource monitor | ✅ Owner | | | |
@@ -64,7 +64,7 @@ HuntForge is large enough that four people working in parallel can each own a me
 
 ---
 
-## 2. Member 1 — Red Team Lead / Core Engine
+## 2. Nimesh — Red Team Lead / Core Engine
 
 > **Role:** Red Team Lead
 > **Owns:** The entire `core/` directory. You are the architect.
@@ -99,7 +99,7 @@ from core.resource_monitor import ResourceMonitor
 from core.tag_manager import TagManager
 from core.efficiency_filter import EfficiencyFilter
 from core.budget_tracker import BudgetTracker
-from core.hf_logger import HFLogger  # Member 3 provides this
+from core.hf_logger import HFLogger  # Prince provides this
 from loguru import logger
 
 class Orchestrator:
@@ -111,8 +111,8 @@ class Orchestrator:
         self.monitor = ResourceMonitor(profile)
         self.tags = TagManager(self.output_dir)
         self.eff_filter = EfficiencyFilter(self.output_dir)
-        self.hf_log = HFLogger(self.output_dir)  # Member 3
-        self.scope = scope_checker                # Member 4
+        self.hf_log = HFLogger(self.output_dir)  # Prince
+        self.scope = scope_checker                # Abhishek
         with open(methodology_path) as f:
             self.methodology = yaml.safe_load(f)
         budget_cfg = self.methodology.get("budget")
@@ -196,8 +196,8 @@ class Orchestrator:
 | 3 | Build `tag_manager.py`. Write unit tests for `has()` with different confidence levels. |
 | 4 | Build `efficiency_filter.py` and `budget_tracker.py` as standalone classes. |
 | 5 | Build the orchestrator. Wire all systems together. Test with mock tool modules. |
-| 6 | Integrate Member 3's HFLogger. Integrate Member 4's scope checker. |
-| 7+ | Integration testing with Member 2's real tool modules. |
+| 6 | Integrate Prince's HFLogger. Integrate Abhishek's scope checker. |
+| 7+ | Integration testing with Neel's real tool modules. |
 
 ### 2.4 Git Workflow
 
@@ -216,7 +216,7 @@ git commit -m "fix(budget): handle missing budget block gracefully"
 
 ---
 
-## 3. Member 2 — Red Team Partner / Tool Modules & AI
+## 3. Neel — Red Team Partner / Tool Modules & AI
 
 > **Role:** Red Team Partner
 > **Owns:** All tool modules (`modules/` directory) + AI integration (`ai/` directory)
@@ -251,7 +251,7 @@ git commit -m "fix(budget): handle missing budget block gracefully"
 | `modules/vuln_scan/subjack.py` | Subdomain takeover — always runs |
 | `modules/vuln_scan/dalfox.py` | XSS scanner — only if `params_found` |
 | `ai/methodology_engine.py` | Ollama: user prompt → YAML methodology |
-| `ai/report_generator.py` | Claude API: scan results + tags → HTML report |
+| `ai/report_generator.py` | Gemini API: scan results + tags → HTML report |
 | `scripts/install_tools.sh` | Auto-install all Go/pip tools in one command |
 
 ### 3.2 The Base Module Pattern — Learn This First
@@ -348,28 +348,53 @@ def generate_methodology(user_instruction):
 
 ```python
 # ai/report_generator.py
-import anthropic, json
+import os
+import json
+from loguru import logger
+import google.generativeai as genai
 
-def generate_report(scan_results, domain, active_tags):
-    client = anthropic.Anthropic()
-    priority_hints = []
-    for tag, meta in active_tags.items():
-        if isinstance(meta, dict) and meta.get("confidence") == "high":
-            priority_hints.append(f"HIGH CONFIDENCE: {tag} ({meta.get('source')})")
+class ReportGenerator:
+    def __init__(self, api_key: str = None):
+        self.api_key = api_key or os.environ.get("GEMINI_API_KEY")
+        if self.api_key:
+            genai.configure(api_key=self.api_key)
 
-    prompt = f"""
-Generate a professional HTML bug bounty recon report for: {domain}
-Priority Intelligence: {", ".join(priority_hints)}
-Tag Summary: {json.dumps({k: v.get("confidence") if isinstance(v, dict) else v
-                           for k, v in active_tags.items()}, indent=2)}
-Scan Data: {json.dumps(scan_results, indent=2)}
-Structure: Executive Summary, Attack Surface Map, Priority Findings
-(sorted by tag confidence), Full Subdomain Table, Next Steps.
-Return only valid HTML with embedded CSS.
-"""
-    msg = client.messages.create(model="claude-opus-4-5", max_tokens=4096,
-                                  messages=[{"role": "user", "content": prompt}])
-    return msg.content[0].text
+    def generate(self, domain: str, tag_manager, output_dir: str):
+        if not self.api_key:
+            logger.error("Gemini API key not found. Set GEMINI_API_KEY environment variable.")
+            return
+
+        logger.info(f"Generating final AI report for {domain} via Gemini API...")
+
+        tags = tag_manager.get_all()
+
+        context = f"Domain: {domain}\n\nDiscovered Tags (Intelligence):\n"
+        for t, data in tags.items():
+            context += f"- {t} (Confidence: {data.get('confidence')})\n"
+
+        system_prompt = "You are HuntForge AI, a senior offensive security analyst. Write a professional, concise executive summary and vulnerability report based on the provided reconnaissance tags and intelligence. Highlight critical risks."
+
+        final_prompt = f"{system_prompt}\n\n[USER Context]\n{context}"
+
+        try:
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            response = model.generate_content(final_prompt)
+            report_text = response.text
+
+            os.makedirs(os.path.join(output_dir, 'logs'), exist_ok=True)
+            report_path = os.path.join(output_dir, 'logs', 'ai_report.md')
+
+            with open(report_path, 'w') as f:
+                f.write(report_text)
+
+            logger.success(f"AI Report written to {report_path}")
+
+        except Exception as e:
+            logger.error(f"Failed to generate report via Gemini API: {e}")
+
+def generate_report(domain, tag_manager, output_dir):
+    bot = ReportGenerator()
+    bot.generate(domain, tag_manager, output_dir)
 ```
 
 ### 3.4 Learning Path
@@ -382,12 +407,12 @@ Return only valid HTML with embedded CSS.
 | 5 | Write `nuclei`, `subjack`, `gitleaks`. Add `emit_tags()` to each. |
 | 6 | Write remaining modules (`ffuf`, `katana`, `gau`, `paramspider`, `dalfox`). |
 | 7 | Install Ollama and build `methodology_engine.py`. Test with 5 different prompts. |
-| 8 | Build `report_generator.py`. Get API key from console.anthropic.com. |
+| 8 | Build `report_generator.py`. Get API key from ai.google.dev. |
 | 9 | Write `install_tools.sh`. Make sure one script installs everything cleanly. |
 
 ---
 
-## 4. Member 3 — Blue Team 1 / Logging & Detection
+## 4. Prince — Blue Team 1 / Logging & Detection
 
 > **Role:** Blue Team 1 — Logging & Detection
 > **Owns:** The entire logging system + tool fingerprint database + SIEM formatter
@@ -676,7 +701,7 @@ class SIEMFormatter:
 
 | Week | Task |
 |---|---|
-| 1–2 | Study the orchestrator code (Member 1). Understand every event you need to log. |
+| 1–2 | Study the orchestrator code (Nimesh). Understand every event you need to log. |
 | 3 | Build HFLogger. Wire it up with stub calls, test independently. |
 | 4 | Research 5 tools (subfinder, nmap, nuclei, ffuf, gitleaks). Fill `tool_fingerprints.json`. |
 | 5 | Research remaining 20 tools. Complete the fingerprint database. |
@@ -686,7 +711,7 @@ class SIEMFormatter:
 
 ---
 
-## 5. Member 4 — Blue Team 2 / Dashboard, Scope & Onboarding
+## 5. Abhishek — Blue Team 2 / Dashboard, Scope & Onboarding
 
 > **Role:** Blue Team 2 — Dashboard, Scope & Onboarding
 > **Owns:** Flask web dashboard, scope enforcer, scan history DB, onboarding wizard
@@ -705,7 +730,7 @@ Your work is the face of HuntForge. You make the tool accessible, safe, and prof
 | `dashboard/app.py` | Flask web application — main dashboard backend |
 | `dashboard/templates/index.html` | Dashboard homepage — scan overview, recent scans, active tags |
 | `dashboard/templates/scan.html` | Individual scan detail page — phase timeline, findings, tag confidence |
-| `dashboard/templates/tools.html` | Tool fingerprint browser — shows Member 3's detection data visually |
+| `dashboard/templates/tools.html` | Tool fingerprint browser — shows Prince's detection data visually |
 | `dashboard/static/style.css` | Dashboard CSS styling |
 | `scripts/setup_wizard.py` | First-run interactive wizard — API keys, machine profile, scope config |
 | `scripts/check_tools.py` | Checks all required tools are installed, shows version table |
@@ -923,7 +948,7 @@ def run_wizard():
 
     # API keys
     console.print("\n[bold]Step 2: API Keys (press Enter to skip)[/]")
-    config["anthropic_api_key"] = Prompt.ask("Anthropic API key", default="", password=True)
+    config["gemini_api_key"] = Prompt.ask("Gemini API key", default="", password=True)
     config["shodan_api_key"]    = Prompt.ask("Shodan API key",    default="", password=True)
 
     # Scope preference
@@ -955,7 +980,7 @@ if __name__ == "__main__":
 | 5 | Build Flask dashboard skeleton — `index.html`, `scan.html` with placeholder data. |
 | 6 | Connect dashboard to real scan output. Wire up API routes. |
 | 7 | Style the dashboard. Use AI to generate the CSS and HTML templates. |
-| 8 | Add the tool fingerprint browser page (uses Member 3's data). |
+| 8 | Add the tool fingerprint browser page (uses Prince's data). |
 | 9 | Integration testing — run a real scan, verify it appears in dashboard. |
 
 ---
@@ -967,24 +992,24 @@ The logging system is the thread that ties all four team members together.
 ### 6.1 Log Flow Diagram
 
 ```
-Member 1 (Orchestrator) calls:
+Nimesh (Orchestrator) calls:
   hf_log.scan_start(domain)
   hf_log.phase_start(phase_name, label)
-  hf_log.tool_start(tool_name)      ← Member 3 HFLogger captures this
+  hf_log.tool_start(tool_name)      ← Prince HFLogger captures this
   hf_log.tool_complete(tool_name, count)
   hf_log.tool_skipped(tool_name, reason)
   hf_log.tag_set(tag, confidence, source)
   hf_log.phase_end(phase_name)
   hf_log.scan_end(final_tags)
             ↓
-Member 3 (HFLogger) writes to:
+Prince (HFLogger) writes to:
   output/[domain]/logs/scan_events.jsonl  ← one JSON object per line
             ↓
-Member 3 (SIEMFormatter) converts to:
+Prince (SIEMFormatter) converts to:
   Splunk HEC format / CEF / LEEF
   → Import into Splunk trial for detection rule practice
             ↓
-Member 4 (Dashboard) reads:
+Abhishek (Dashboard) reads:
   GET /api/scan_log/<domain> → reads scan_events.jsonl
   Renders timeline of events in browser
   Shows tag confidence as colored badges
@@ -1030,10 +1055,10 @@ Member 4 (Dashboard) reads:
 
 ```
 main                         ← stable, working code only. PRs reviewed by all 4.
-├── feature/core-engine      ← Member 1
-├── feature/tool-modules     ← Member 2
-├── feature/logging-detection ← Member 3
-└── feature/dashboard-scope  ← Member 4
+├── feature/core-engine      ← Nimesh
+├── feature/tool-modules     ← Neel
+├── feature/logging-detection ← Prince
+└── feature/dashboard-scope  ← Abhishek
 
 Integration branches (created when 2+ features need to be tested together):
 └── integration/phase1-complete ← created after Phases 1–3 all work together
@@ -1045,11 +1070,11 @@ These are the agreements between team members. If you change an interface, you t
 
 | Contract | Details |
 |---|---|
-| Member 1 → Member 2 | `base_module.py` interface is stable. `emitted_tag_metadata` dict and `estimated_requests()` method are fixed APIs. Member 2 depends on these. |
-| Member 1 → Member 3 | Orchestrator calls `hf_log.tool_start(tool_name)` and `hf_log.tool_complete(tool_name, count)`. These signatures will not change after Week 5. |
-| Member 1 → Member 4 | Orchestrator accepts `scope_checker=None` parameter. Calls `scope_checker.check(domain)` before scan. Member 4 provides the `ScopeEnforcer` instance. |
-| Member 3 → Member 4 | HFLogger writes to `output/[domain]/logs/scan_events.jsonl`. Format is stable JSONL. Member 4 reads this in the dashboard. |
-| Member 3 → Everyone | `data/tool_fingerprints.json` is read by HFLogger and dashboard. Schema is stable after Week 5. |
+| Nimesh → Neel | `base_module.py` interface is stable. `emitted_tag_metadata` dict and `estimated_requests()` method are fixed APIs. Neel depends on these. |
+| Nimesh → Prince | Orchestrator calls `hf_log.tool_start(tool_name)` and `hf_log.tool_complete(tool_name, count)`. These signatures will not change after Week 5. |
+| Nimesh → Abhishek | Orchestrator accepts `scope_checker=None` parameter. Calls `scope_checker.check(domain)` before scan. Abhishek provides the `ScopeEnforcer` instance. |
+| Prince → Abhishek | HFLogger writes to `output/[domain]/logs/scan_events.jsonl`. Format is stable JSONL. Abhishek reads this in the dashboard. |
+| Prince → Everyone | `data/tool_fingerprints.json` is read by HFLogger and dashboard. Schema is stable after Week 5. |
 
 ### 7.3 Weekly Sync Checklist
 
@@ -1064,9 +1089,9 @@ These are the agreements between team members. If you change an interface, you t
 | Test Type | Who Writes It / What It Tests |
 |---|---|
 | Unit tests (pytest) | Each member writes tests for their own code. `tag_manager.has()` threshold logic, `ScopeEnforcer` pattern matching, budget time parsing. |
-| Integration tests | Member 1 writes tests that run mock tool modules through the full orchestrator pipeline. |
+| Integration tests | Nimesh writes tests that run mock tool modules through the full orchestrator pipeline. |
 | End-to-end tests | All 4 members: run a full scan against a test domain (use your own server or a dedicated bug bounty program). Verify all logs, tags, and dashboard output. |
-| Blue team exercise | Member 3 and 4: after a full scan, analyze the `scan_events.jsonl` in Splunk. Write at least one detection rule for nuclei and one for ffuf. |
+| Blue team exercise | Prince and 4: after a full scan, analyze the `scan_events.jsonl` in Splunk. Write at least one detection rule for nuclei and one for ffuf. |
 
 ---
 
@@ -1075,26 +1100,26 @@ These are the agreements between team members. If you change an interface, you t
 ```
 huntforge/                          ← root
 │
-├── huntforge.py                    ← Member 1: main CLI entry point
+├── huntforge.py                    ← Nimesh: main CLI entry point
 ├── requirements.txt
 ├── README.md                       ← All members contribute sections
-├── CONTRIBUTING.md                 ← Member 4 writes this
-├── docker-compose.yml              ← Member 1 (Phase 5)
+├── CONTRIBUTING.md                 ← Abhishek writes this
+├── docker-compose.yml              ← Nimesh (Phase 5)
 │
-├── core/                           ← Member 1 OWNS this entire directory
+├── core/                           ← Nimesh OWNS this entire directory
 │   ├── orchestrator.py
 │   ├── resource_monitor.py
 │   ├── tag_manager.py
 │   ├── efficiency_filter.py
 │   ├── budget_tracker.py
-│   ├── hf_logger.py                ← Member 3 provides, Member 1 imports
-│   ├── siem_formatter.py           ← Member 3
-│   ├── scope_enforcer.py           ← Member 4 provides, Member 1 imports
-│   ├── scan_history.py             ← Member 4
-│   └── deduplicator.py             ← Member 1
+│   ├── hf_logger.py                ← Prince provides, Nimesh imports
+│   ├── siem_formatter.py           ← Prince
+│   ├── scope_enforcer.py           ← Abhishek provides, Nimesh imports
+│   ├── scan_history.py             ← Abhishek
+│   └── deduplicator.py             ← Nimesh
 │
-├── modules/                        ← Member 2 OWNS this entire directory
-│   ├── base_module.py              ← Member 1 defines, Member 2 inherits
+├── modules/                        ← Neel OWNS this entire directory
+│   ├── base_module.py              ← Nimesh defines, Neel inherits
 │   ├── passive/
 │   │   ├── subfinder.py
 │   │   ├── amass.py
@@ -1126,11 +1151,11 @@ huntforge/                          ← root
 │       ├── subjack.py
 │       └── dalfox.py
 │
-├── ai/                             ← Member 2 OWNS
+├── ai/                             ← Neel OWNS
 │   ├── methodology_engine.py
 │   └── report_generator.py
 │
-├── dashboard/                      ← Member 4 OWNS
+├── dashboard/                      ← Abhishek OWNS
 │   ├── app.py
 │   ├── templates/
 │   │   ├── index.html
@@ -1140,14 +1165,14 @@ huntforge/                          ← root
 │       └── style.css
 │
 ├── config/
-│   ├── default_methodology.yaml    ← Member 1
-│   ├── tool_configs.yaml           ← Member 2
-│   └── machine_profiles.yaml      ← Member 1
+│   ├── default_methodology.yaml    ← Nimesh
+│   ├── tool_configs.yaml           ← Neel
+│   └── machine_profiles.yaml      ← Nimesh
 │
 ├── data/                           ← Shared data directory
-│   ├── tool_fingerprints.json      ← Member 3 OWNS
-│   ├── bug_bounty_scopes.json      ← Member 4 OWNS
-│   └── scan_history.db             ← Auto-created by Member 4's ScanHistory
+│   ├── tool_fingerprints.json      ← Prince OWNS
+│   ├── bug_bounty_scopes.json      ← Abhishek OWNS
+│   └── scan_history.db             ← Auto-created by Abhishek's ScanHistory
 │
 ├── output/                         ← Auto-created per scan
 │   └── [domain]/
@@ -1158,20 +1183,20 @@ huntforge/                          ← root
 │       │   ├── budget_status.json
 │       │   └── efficiency_report.json
 │       ├── logs/
-│       │   └── scan_events.jsonl   ← Member 3's HFLogger output
+│       │   └── scan_events.jsonl   ← Prince's HFLogger output
 │       └── report.html             ← AI-generated final report
 │
 ├── tests/                          ← All members write tests for their code
-│   ├── test_orchestrator.py        ← Member 1
-│   ├── test_tag_manager.py         ← Member 1
-│   ├── test_modules.py             ← Member 2
-│   ├── test_hf_logger.py           ← Member 3
-│   └── test_scope_enforcer.py      ← Member 4
+│   ├── test_orchestrator.py        ← Nimesh
+│   ├── test_tag_manager.py         ← Nimesh
+│   ├── test_modules.py             ← Neel
+│   ├── test_hf_logger.py           ← Prince
+│   └── test_scope_enforcer.py      ← Abhishek
 │
 └── scripts/
-    ├── install_tools.sh            ← Member 2
-    ├── setup_wizard.py             ← Member 4
-    └── check_tools.py              ← Member 4
+    ├── install_tools.sh            ← Neel
+    ├── setup_wizard.py             ← Abhishek
+    └── check_tools.py              ← Abhishek
 ```
 
 ---
@@ -1184,7 +1209,7 @@ huntforge/                          ← root
 | 2 | M1: `base_module` + `resource_monitor`. M2: `subfinder`, `crtsh`. M3: HFLogger skeleton. M4: `scope_enforcer` | First real code in all 4 branches |
 | 3 | M1: `tag_manager`. M2: `httpx`, `naabu`. M3: `tool_fingerprints` (5 tools). M4: `setup_wizard` | |
 | 4 | M1: `efficiency_filter` + `budget_tracker`. M2: `whatweb` + `classifier`. M3: fingerprints (15 tools). M4: `scan_history` | |
-| 5 | M1: orchestrator core. M2: `nuclei`, `gitleaks`, `subjack`. M3: SIEM formatter. M4: Flask skeleton | Integration test: Member 1+2 phases run together |
+| 5 | M1: orchestrator core. M2: `nuclei`, `gitleaks`, `subjack`. M3: SIEM formatter. M4: Flask skeleton | Integration test: Nimesh+2 phases run together |
 | 6 | M1: wire all systems. M2: remaining modules. M3: Splunk import test. M4: dashboard routes | |
 | **7** | **Integration branch: all features merged. Full scan test.** | 🎯 **MILESTONE: Full scan works end-to-end on real target** |
 | 8 | M1+2: AI integration. M3: detection rules. M4: dashboard styling | AI methodology + report working |
@@ -1201,19 +1226,19 @@ huntforge/                          ← root
 
 | Member | Technical Skills Gained | Career Value |
 |---|---|---|
-| **Member 1** Red Lead | Python system design, subprocess management, concurrent execution, YAML parsing, tag/flag systems, budget tracking | Can explain framework architecture in interviews. Demonstrates senior-level thinking about modularity and safety. |
-| **Member 2** Red Team | 25+ offensive security tools (hands-on), subprocess wrappers, AI API integration, LLM prompt engineering, Go tool ecosystem | Knows more tools than most junior red teamers. AI integration is a rare skill in security roles. |
-| **Member 3** Blue Team | Structured logging design, SIEM formats (CEF/LEEF/Splunk), offensive tool behavior from defender perspective, detection rule writing | Can discuss how to detect recon tools in any SOC interview. Unique dual-perspective knowledge. |
-| **Member 4** Blue Team | Flask web development, SQLite, scope enforcement design, UX/onboarding design, legal compliance thinking | Built a security web application. Understands compliance/scope constraints that real security teams deal with daily. |
+| **Nimesh** Red Lead | Python system design, subprocess management, concurrent execution, YAML parsing, tag/flag systems, budget tracking | Can explain framework architecture in interviews. Demonstrates senior-level thinking about modularity and safety. |
+| **Neel** Red Team | 25+ offensive security tools (hands-on), subprocess wrappers, AI API integration, LLM prompt engineering, Go tool ecosystem | Knows more tools than most junior red teamers. AI integration is a rare skill in security roles. |
+| **Prince** Blue Team | Structured logging design, SIEM formats (CEF/LEEF/Splunk), offensive tool behavior from defender perspective, detection rule writing | Can discuss how to detect recon tools in any SOC interview. Unique dual-perspective knowledge. |
+| **Abhishek** Blue Team | Flask web development, SQLite, scope enforcement design, UX/onboarding design, legal compliance thinking | Built a security web application. Understands compliance/scope constraints that real security teams deal with daily. |
 
 ### 10.1 Resume Lines for Everyone
 
 | Member | Resume Project Entry |
 |---|---|
-| Member 1 | Architected HuntForge — a Python recon framework with modular orchestration, AI-driven methodology, and resource-aware execution (`github.com/team/huntforge`) |
-| Member 2 | Built 25+ security tool integrations for HuntForge using Python subprocess architecture, and implemented Ollama/Claude AI integration for dynamic scan methodology |
-| Member 3 | Built the logging and detection layer for HuntForge — including a SIEM-compatible event log system and a detection fingerprint database covering 25+ offensive tools |
-| Member 4 | Developed the HuntForge web dashboard, scope enforcement engine, and onboarding system, ensuring legal compliance and accessibility for security team workflows |
+| Nimesh | Architected HuntForge — a Python recon framework with modular orchestration, AI-driven methodology, and resource-aware execution (`github.com/team/huntforge`) |
+| Neel | Built 25+ security tool integrations for HuntForge using Python subprocess architecture, and implemented Ollama/Gemini AI integration for dynamic scan methodology |
+| Prince | Built the logging and detection layer for HuntForge — including a SIEM-compatible event log system and a detection fingerprint database covering 25+ offensive tools |
+| Abhishek | Developed the HuntForge web dashboard, scope enforcement engine, and onboarding system, ensuring legal compliance and accessibility for security team workflows |
 
 ---
 
