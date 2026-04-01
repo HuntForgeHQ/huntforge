@@ -1,452 +1,611 @@
 # Contributing to HuntForge
 
-Thank you for your interest in contributing to HuntForge! This guide will help you get started.
+Thank you for your interest in contributing! This guide will help you understand our process and standards.
+
+---
 
 ## 📋 Table of Contents
 
-- [Code of Conduct](#code-of-conduct)
-- [Getting Started](#getting-started)
-- [Development Environment Setup](#development-environment-setup)
-- [Workflow](#workflow)
-- [Adding a New Tool Module](#adding-a-new-tool-module)
-- [Code Standards](#code-standards)
-- [Testing](#testing)
-- [Submitting Changes](#submitting-changes)
-- [Community](#community)
+- [Code of Conduct](#-code-of-conduct)
+- [Getting Started](#-getting-started)
+- [Development Workflow](#-development-workflow)
+- [Adding New Tool Modules](#-adding-new-tool-modules)
+- [Code Standards](#-code-standards)
+- [Testing](#-testing)
+- [Pull Request Process](#-pull-request-process)
+- [Commit Guidelines](#-commit-guidelines)
+- [Community](#-community)
 
 ---
 
-## Code of Conduct
+## 📜 Code of Conduct
 
-HuntForge is an inclusive, respectful community. By participating, you agree to:
+This project adheres to the [Contributor Covenant](https://www.contributor-covenant.org/). By participating, you are expected to:
 
-- Be respectful and welcoming
-- Accept constructive feedback
-- Focus on what's best for the community
-- Show empathy towards others
+- ✅ Be respectful and inclusive
+- ✅ Welcome newcomers and help them get started
+- ✅ Focus on constructive feedback
+- ✅ Accept responsibility and apologize for mistakes
 
-Harassment or discrimination of any kind will not be tolerated.
+**Harassment or discrimination of any kind is unacceptable.**
 
----
-
-## Getting Started
-
-### Finding Something to Work On
-
-1. **Browse open issues**: Check the [GitHub Issues](https://github.com/HuntForgeHQ/huntforge/issues) page
-   - Labeled `good-first-issue` - perfect for newcomers
-   - Labeled `help-wanted` - needs community assistance
-   - Labeled `bug` - something that needs fixing
-
-2. **Check the roadmap**: See [README.md](README.md#roadmap) for planned features
-
-3. **Join discussions**: Open a [GitHub Discussion](https://github.com/HuntForgeHQ/huntforge/discussions) to ask questions or propose ideas
-
-4. **Review implementation.md**: Understand the team structure and architecture
-
-### Before You Start
-
-- **Comment on the issue** to claim it (prevents duplicate work)
-- **Ask questions** if anything is unclear
-- **Ensure the issue is actionable** - if not, we'll help refine it
+Report violations to: [security@huntforge.dev](mailto:security@huntforge.dev)
 
 ---
 
-## Development Environment Setup
+## 🚀 Getting Started
 
-### 1. Fork and Clone
+### 1. Fork & Clone
 
 ```bash
-# Fork the repository on GitHub, then:
-git clone https://github.com/YOURUSERNAME/huntforge.git
+# Fork the repo on GitHub, then:
+git clone https://github.com/YOUR_USERNAME/huntforge.git
 cd huntforge
-
-# Add upstream remote
-git remote add upstream https://github.com/HuntForgeHQ/huntforge.git
+git remote add upstream https://github.com/huntforge/huntforge.git
 ```
 
-### 2. Create Virtual Environment
+### 2. Set Up Development Environment
 
 ```bash
-# Create Python virtual environment
+# Create virtual environment
 python3 -m venv venv
 
 # Activate it
-# Linux/macOS:
-source venv/bin/activate
-# Windows (PowerShell):
-venv\Scripts\Activate.ps1
+source venv/bin/activate          # Linux/Mac
+venv\Scripts\activate             # Windows
 
 # Install dependencies
-pip install --upgrade pip
 pip install -r requirements.txt
-pip install black pylint pytest pytest-cov  # Development tools
+
+# Install pre-commit hooks
+pip install pre-commit
+pre-commit install
 ```
 
-### 3. Start Docker Container
+### 3. Build Docker Image (Optional but Recommended)
 
 ```bash
-# Build and start Kali container
-docker-compose up -d
-
-# Wait for it to be ready
-docker ps | grep huntforge-kali
-
-# Install tools (if not already)
-docker exec huntforge-kali python3 scripts/installer.py --profile lite
+docker compose build
+docker compose up -d
 ```
 
 ### 4. Verify Setup
 
 ```bash
-# Check Python syntax
-python3 -m py_compile huntforge.py
+# Run smoke test (quick scan)
+python3 scripts/smoke_test.sh
 
-# Test core imports
-python3 -c "
-from core.tag_manager import TagManager
-from core.orchestrator_v2 import OrchestratorV2
-print('Development environment OK')
-"
-
-# Run test scan (dry-run mode if available)
-python3 huntforge.py --help
+# Should complete without errors
 ```
 
 ---
 
-## Workflow
+## 🔄 Development Workflow
 
 ### Branch Strategy
 
-- **`main`**: Stable production code (protected)
-- **`feature/your-feature-name`**: Your development branch
-- **`fix/issue-description`**: Bug fix branches
-
-**Never push directly to `main`**. All changes via Pull Request.
-
-### Daily Workflow
+- **`main`** — stable, production-ready code
+- **`develop`** — integration branch for features
+- **`feature/xxx`** — new features
+- **`fix/xxx`** — bug fixes
+- **`docs/xxx`** — documentation updates
+- **`tool/xxx`** — new tool modules
 
 ```bash
-# 1. Sync with upstream
-git checkout main
-git pull upstream main
-git checkout -b feature/your-feature
+# Start from latest develop
+git checkout develop
+git pull upstream develop
 
-# 2. Make changes
-# ... edit code ...
-
-# 3. Check syntax
-python3 -m py_compile **/*.py
-
-# 4. Run tests (if any)
-pytest tests/ -v
-
-# 5. Commit with conventional commit message
-git add .
-git commit -m "feat(tag-manager): add tag expiration support"
-
-# 6. Push to your fork
-git push origin feature/your-feature
-
-# 7. Open PR on GitHub
-#    - Base: HuntForgeHQ/main
-#    - Compare: YOURUSERNAME/feature/your-feature
+# Create feature branch
+git checkout -b feature/amazing-feature
 ```
 
-### Keeping Your Branch Updated
+### Daily Sync with Upstream
 
 ```bash
-# If upstream/main has changed, rebase your branch
-git checkout feature/your-feature
 git fetch upstream
-git rebase upstream/main
-# Resolve any conflicts, then:
-git push -f origin feature/your-feature  # Force push after rebase
+git rebase upstream/develop
+# Resolve conflicts if any
 ```
 
 ---
 
-## Adding a New Tool Module
+## 📦 Adding New Tool Modules
 
-HuntForge's modular architecture makes adding new tools straightforward.
+This is the most common contribution. Follow these steps:
 
-### Step-by-Step Guide
+### Step 1: Choose the Right Category
 
-#### 1. Choose the Right Phase
+Place your module in the appropriate directory:
 
-Place your tool in the appropriate category:
+| Phase | Directory | Examples |
+|-------|-----------|----------|
+| Passive Recon | `modules/passive/` | subfinder.py, amass.py |
+| Secrets | `modules/secrets/` | gitleaks.py, trufflehog.py |
+| Discovery | `modules/discovery/` | httpx.py, naabu.py |
+| Surface Intel | `modules/surface_intel/` | whatweb.py, wappalyzer.py |
+| Enumeration | `modules/enumeration/` | katana.py, gau.py |
+| Content Discovery | `modules/content_discovery/` | ffuf.py, dirsearch.py |
+| Vuln Scan | `modules/vuln_scan/` | nuclei.py, sqlmap.py |
 
-| Phase | Directory | Purpose |
-|-------|-----------|---------|
-| 1 | `modules/passive/` | Passive reconnaissance (no target contact) |
-| 2 | `modules/secrets/` | Secret/credential scanning |
-| 3 | `modules/discovery/` | Asset discovery and probing |
-| 4 | `modules/surface_intel/` | Technology fingerprinting |
-| 5 | `modules/enumeration/` | Endpoint and parameter enumeration |
-| 6 | `modules/content_discovery/` | Directory/file discovery |
-| 7 | `modules/vuln_scan/` | Active vulnerability scanning |
+### Step 2: Implement the Module
 
-#### 2. Create Module File
-
-Create `modules/{category}/{toolname}.py`:
+Create `modules/vuln_scan/mytool.py`:
 
 ```python
 """
-{ToolName} Module
+MyTool Module - Vulnerability scanner for XSS
 
-Responsibility: Brief description of what this tool does
-Inherits from: BaseModule
-Raises: Specific custom exceptions
+Author: Your Name
+Module: vuln_scan
+Tool: mytool
 """
+
 import os
+import json
 from modules.base_module import BaseModule
 from core.exceptions import OutputParseError
 
-class {Toolname}Module(BaseModule):
-    """
-    Wrapper for {Toolname} security scanner.
 
-    Attributes:
-        name (str): Tool identifier - must match YAML config key
-        phase (int): Default phase number - can be overridden in YAML
-    """
+class MyToolModule(BaseModule):
+    """MyTool vulnerability scanner integration."""
 
-    def build_command(self, target: str, container_output_file: str) -> list:
+    def build_command(self, target: str, output_file: str) -> list:
         """
-        Build shell command to run inside Docker container.
+        Build the command to run inside Docker container.
 
         Args:
-            target: Domain to scan (e.g., 'example.com')
-            container_output_file: Path inside container for output
+            target: Domain being scanned
+            output_file: Container path for output
 
         Returns:
-            list: Command as array of strings for subprocess
-
-        Example:
-            return ['{toolname}', '-d', target, '-o', container_output_file]
+            List of command arguments
         """
         return [
-            '{toolname}',
+            'mytool',
             '-d', target,
-            '-o', container_output_file,
-            '-silent'
+            '-o', output_file,
+            '-json',
+            '-threads', str(self._cfg('threads', default=10))
         ]
 
-    def run(self, target: str, output_dir: str,
-            tag_manager, config: dict = None) -> dict:
+    def run(self, target: str, output_dir: str, tag_manager, config: dict = None) -> dict:
         """
-        Execute tool and return standardized result dictionary.
+        Execute the tool and parse results.
 
         Args:
             target: Domain to scan
-            output_dir: Base output path (e.g., 'output/example.com')
-            tag_manager: TagManager instance for tag operations
-            config: Optional YAML configuration overrides
+            output_dir: Host output directory (output/domain/)
+            tag_manager: shared TagManager instance
+            config: Tool configuration from YAML
 
         Returns:
-            dict: Must contain:
-                - 'results': list of findings
-                - 'count': int count of findings
-                - 'requests_made': estimated HTTP requests
+            {
+                'results': [...],           # List of findings
+                'count': 15,               # Number of findings
+                'requests_made': 250,      # HTTP requests made
+                'metadata': {...}          # Optional extra data
+            }
         """
         self.config = config or {}
 
-        # Setup paths
-        host_output_file = os.path.join(output_dir, 'raw', '{toolname}.txt')
-        container_output_file = host_output_file.replace('\\', '/')
-        os.makedirs(os.path.dirname(host_output_file), exist_ok=True)
+        # Setup output path
+        host_output = os.path.join(output_dir, 'raw', 'mytool.json')
+        container_output = host_output.replace('\\', '/')
+        os.makedirs(os.path.dirname(host_output), exist_ok=True)
 
-        # Build and run command
-        command = self.build_command(target, container_output_file)
-        self._run_subprocess(command)  # Raises BinaryNotFoundError, ToolTimeoutError, etc.
+        # Execute
+        command = self.build_command(target, container_output)
+        self._run_subprocess(command)
 
-        # Parse output
+        # Parse results
         try:
-            content = self._read_output_file(host_output_file)
-            results = self._parse(content)
-        except Exception as e:
-            raise OutputParseError(f"Failed to parse {self.__class__.__name__} output: {e}")
+            with open(host_output, 'r') as f:
+                data = json.load(f)
+
+            results = self._parse_results(data)
+        except FileNotFoundError:
+            raise OutputParseError(
+                f"Tool produced no output: {host_output}",
+                tool='mytool'
+            )
 
         return {
             'results': results,
             'count': len(results),
-            'requests_made': self.estimated_requests()
+            'requests_made': self._parse_request_count(data),
         }
 
     def emit_tags(self, result: dict, tag_manager) -> None:
         """
-        Set tags on tag_manager based on tool results.
-
-        Only override if tool produces actionable intelligence for other phases.
+        Set tags based on tool output.
 
         Args:
-            result: The return dict from run()
-            tag_manager: TagManager instance to add tags to
+            result: Return value from run()
+            tag_manager: Shared TagManager to update
         """
         if result['count'] == 0:
             return
 
-        # Example: Set a tag based on findings
+        # Set XSS found tag
         tag_manager.add(
-            'has_{toolname}_findings',
-            confidence='medium',
-            evidence=result['results'][:3],
-            source='{toolname}'
+            tag='xss_found',
+            confidence='high' if result['count'] > 5 else 'medium',
+            evidence=[r['url'] for r in result['results'][:3]],
+            source='mytool'
         )
 
     def estimated_requests(self) -> int:
         """
-        Return estimated HTTP requests this tool will make.
-        Used by BudgetTracker for pre-execution gatekeeping.
+        Estimated HTTP requests for budget planning.
 
         Returns:
-            int: Estimated request count
+            Integer count of expected requests
         """
-        return 100  # Adjust based on tool behavior
+        # Estimate based on subdomain count if available
+        # Or return conservative default
+        return 200
 
-    def _parse(self, content: str) -> list:
-        """Parse raw tool output into list of findings."""
-        return [
-            line.strip()
-            for line in content.splitlines()
-            if line.strip()
-        ]
+    # ──────────────────────────────────────────────────────────────
+    # Private helper methods (custom to your module)
+    # ──────────────────────────────────────────────────────────────
+
+    def _parse_results(self, data: dict) -> list:
+        """Parse tool-specific JSON format into standardized list."""
+        findings = []
+
+        for item in data.get('findings', []):
+            findings.append({
+                'url': item.get('url'),
+                'param': item.get('param'),
+                'payload': item.get('payload'),
+                'severity': item.get('severity', 'medium'),
+            })
+
+        return findings
+
+    def _parse_request_count(self, data: dict) -> int:
+        """Extract request count from tool metadata."""
+        return data.get('stats', {}).get('requests', 100)
 ```
 
-#### 3. Register in Orchestrator
+### Step 3: Add Tool Profile
 
-Add to `orchestrator_v2.py`:
+Edit `data/tool_profiles.yaml`:
+
+```yaml
+mytool:
+  phase: "phase_7_vuln_scan"
+  phase_weight: "medium"          # light | medium | heavy
+  base_memory_mb: 300             # Typical RAM usage
+  base_cpu_cores: 0.8             # CPU cores needed
+  scalable_params:
+    threads:
+      value: 10                   # Default threads
+      memory_per_unit_mb: 20      # RAM per additional thread
+      cpu_per_unit: 0.1           # CPU per additional thread
+      min: 1
+      max: 50
+    timeout:
+      value: 300
+      memory_per_unit_mb: 0
+      min: 60
+      max: 1800
+  estimated_time_min: 20          # Typical duration
+```
+
+**How to determine values:**
+- Run tool with `time` command, monitor `htop`
+- `base_memory_mb`: Resident Set Size (RSS) in MB
+- `base_cpu_cores`: CPU% / 100 during steady state
+- `estimated_time_min`: Wall clock time for typical target
+
+### Step 4: Register in Orchestrator
+
+Edit `core/orchestrator_v2.py`:
 
 ```python
-# At top with other imports:
-from modules.{category}.{toolname} import {Toolname}Module as {ToolnameCap}
+# Import at top (with other phase 7 imports)
+from modules.vuln_scan.mytool import MyToolModule as MyTool
 
-# Add to TOOL_REGISTRY dict:
+# Add to TOOL_REGISTRY
 TOOL_REGISTRY = {
-    # ... existing tools ...
-    '{toolname}': {ToolnameCap},  # Add with proper alphabetical sorting
+    # ... existing tools
+    'mytool': MyTool,
 }
 ```
 
-#### 4. Add Resource Profile
-
-Add entry to `data/tool_profiles.yaml`:
-
-```yaml
-{toolname}:
-  phase: "phase_{n}_{name}"  # Match phase from orchestrator_v2.py
-  phase_weight: "light"      # or "medium", "heavy"
-  base_memory_mb: 150        # Estimate base RAM usage
-  base_cpu_cores: 0.5        # CPU cores required
-  scalable_params:
-    threads:
-      value: 10              # Default value
-      memory_per_unit_mb: 5   # RAM per thread unit
-      cpu_per_unit: 0.1       # CPU per thread
-      min: 1
-      max: 50
-  estimated_time_min: 15      # Expected runtime on typical target
-  category: "{category}"
-```
-
-Adjust values based on tool characteristics. Start conservative (high memory estimate) to avoid OOM.
-
-#### 5. Add to Methodology
+### Step 5: Add to Methodology
 
 Edit `config/default_methodology.yaml`:
 
 ```yaml
-  phase_{n}_{name}:
-    label: "Phase Name"
-    description: "Brief description"
-    parallel: true
-    weight: medium
+phase_7_vuln_scan:
+  # ... existing config
 
-    tools:
-      {toolname}:
-        enabled: true
-        timeout: 300
-        extra_args: ""  # Additional flags
-        config:
-          threads: 20
+  conditional_tools:
+    # ... existing tools
+
+    - tool: mytool
+      always: false
+      if_tag: "params_found"      # Only run if parameters discovered
+      binary: "mytool"
+      weight: medium
+      timeout: 600
+      output_file: "raw/mytool.json"
+      default_flags: "-d {domain} -o {output_file} -json"
+      extra_args: ""
+      config:
+        threads: 10
+        severity: "high,critical"
 ```
 
-#### 6. Add Tests
+### Step 6: Write Tests
 
-Create `tests/test_{toolname}.py`:
+Create `tests/modules/vuln_scan/test_mytool.py`:
 
 ```python
 import pytest
-from modules.{category}.{toolname} import {Toolname}Module
+from modules.vuln_scan.mytool import MyToolModule
+from core.tag_manager import TagManager
 
-def test_{toolname}_command_build():
-    module = {Toolname}Module()
-    cmd = module.build_command("example.com", "/tmp/output.txt")
-    assert cmd[0] == "{toolname}"
-    assert "-d" in cmd
-    assert "example.com" in cmd
 
-def test_{toolname}_parse():
-    module = {Toolname}Module()
-    content = "finding1\nfinding2\n"
-    results = module._parse(content)
-    assert len(results) == 2
+def test_mytool_parse_results():
+    """Test parsing of tool-specific output format."""
+    module = MyToolModule()
+
+    sample_data = {
+        "findings": [
+            {"url": "https://example.com/search?q=<script>", "severity": "high"}
+        ]
+    }
+
+    results = module._parse_results(sample_data)
+
+    assert len(results) == 1
+    assert results[0]['url'] == "https://example.com/search?q=<script>"
+    assert results[0]['severity'] == "high"
+
+
+def test_mytool_tag_emission():
+    """Test that tags are set correctly."""
+    tag_manager = TagManager()
+    module = MyToolModule()
+
+    result = {
+        'results': [
+            {'url': 'https://example.com/test', 'severity': 'high'}
+        ],
+        'count': 1
+    }
+
+    module.emit_tags(result, tag_manager)
+
+    assert tag_manager.has('xss_found')
+    assert tag_manager.get('xss_found')['confidence'] == 'high'
+
+
+def test_mytool_command_building():
+    """Test command construction with config."""
+    module = MyToolModule()
+    module.config = {'threads': 20}
+
+    cmd = module.build_command('example.com', '/tmp/out.json')
+
+    assert 'mytool' in cmd
+    assert '-d' in cmd and 'example.com' in cmd
+    assert '-threads' in cmd and '20' in cmd
 ```
 
-Run tests:
+Run the test:
 
 ```bash
-pytest tests/test_{toolname}.py -v
+pytest tests/modules/vuln_scan/test_mytool.py -v
 ```
 
-#### 7. Documentation
+### Step 7: Submit Pull Request
 
-- Add docstring to class (see examples)
-- Update `README.md` Phase section if needed
-- Add tool to `docs/tool-reference.md` (if exists)
-- Include example output format in comments
+```bash
+git add .
+git commit -m "feat: add mytool vulnerability scanner"
+git push origin feature/mytool
+```
+
+Open PR against `huntforge:develop` branch.
 
 ---
 
-## Code Standards
+## 📏 Code Standards
 
-### Python Style
+We use **PEP 8** with modifications. Auto-format with `black`:
 
-- **Format**: Use `black` (default line length 88)
-  ```bash
-  black . --check  # Verify
-  black .          # Apply
-  ```
+```bash
+black .
+```
 
-- **Linting**: Use `pylint` or `flake8`
-  ```bash
-  pylint modules/your_module.py
-  ```
+### Linting
 
-- **Type hints**: Use for all function signatures
-  ```python
-  def run(self, target: str, output_dir: str) -> dict:
-  ```
+```bash
+flake8 huntforge/           # Style guide enforcement
+mypy huntforge/            # Type checking (optional but encouraged)
+```
 
-- **Docstrings**: Google style
-  ```python
-  def function(param: str) -> bool:
-      """Short description.
+### Type Hints
 
-      Longer description if needed.
+**Add type hints for all public methods:**
 
-      Args:
-          param: Parameter description
+```python
+from typing import List, Dict, Optional
 
-      Returns:
-          bool: Return value description
-      """
-  ```
+def build_command(self, target: str, output_file: str) -> List[str]:
+    ...
 
-### Commit Messages
+def run(self, target: str, output_dir: str,
+        tag_manager, config: Optional[dict] = None) -> dict:
+    ...
+```
 
-Follow [Conventional Commits](https://www.conventionalcommits.org/):
+### Docstrings
+
+Use **Google style** docstrings:
+
+```python
+def method_name(self, param1: str, param2: int) -> bool:
+    """Short description of method.
+
+    Longer description if needed, explaining the purpose
+    and any edge cases.
+
+    Args:
+        param1: Description of param1
+        param2: Description of param2
+
+    Returns:
+        Boolean indicating success/failure
+
+    Raises:
+        ValueError: If param1 is empty
+    """
+```
+
+---
+
+## 🧪 Testing
+
+### Run All Tests
+
+```bash
+# Unit tests only (fast)
+pytest tests/unit/ -v
+
+# Integration tests (requires Docker)
+pytest tests/integration/ -v --docker
+
+# With coverage
+pytest -v --cov=huntforge --cov-report=html
+```
+
+### Test Categories
+
+| Type | Location | Description |
+|------|----------|-------------|
+| **Unit** | `tests/unit/` | Test individual modules in isolation |
+| **Integration** | `tests/integration/` | Full scan against test domain |
+| **Smoke** | `scripts/smoke_test.sh` | Quick sanity check |
+| **Performance** | `tests/performance/` | Benchmark against baselines |
+
+### Writing Tests
+
+**Good test:**
+```python
+def test_subfinder_parse_empty_output():
+    """Empty output should return empty list, not crash."""
+    module = SubfinderModule()
+    results = module._parse("")
+    assert results == []
+```
+
+**Bad test:**
+```python
+def test_subfinder():
+    """Test subfinder"""  # Vague description
+    # Test does multiple things
+    # No assertions clarity
+```
+
+---
+
+## 🔀 Pull Request Process
+
+### Before Submitting
+
+1. ✅ **Rebase on latest develop**
+   ```bash
+   git fetch upstream
+   git rebase upstream/develop
+   ```
+
+2. ✅ **Run all tests locally**
+   ```bash
+   pytest -v
+   ```
+
+3. ✅ **Run linter**
+   ```bash
+   black . && flake8
+   ```
+
+4. ✅ **Update documentation**
+   - Add/update comments
+   - Update README if user-facing changes
+   - Add examples if new feature
+
+5. ✅ **Check git history**
+   ```bash
+   git log --oneline develop..HEAD
+   # Should be clean, logical commits
+   ```
+
+### PR Template
+
+Fill this out when opening PR:
+
+```markdown
+## Description
+[What does this PR do?]
+
+## Type of Change
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Breaking change
+- [ ] Documentation update
+
+## Testing
+[pytest output, manual test results]
+
+## Screenshots/Demo
+[If UI changes, attach screenshot]
+
+## Checklist
+- [ ] Tests added/updated
+- [ ] Documentation updated
+- [ ] CHANGELOG.md updated
+- [ ] No lint errors (black, flake8)
+- [ ] Works on lite, medium, full profiles
+- [ ] No hardcoded paths or secrets
+```
+
+### Review Process
+
+1. **Automated checks** run (CI/CD):
+   - Build Docker image
+   - Run test suite
+   - Lint code
+   - Security scan
+
+2. **Maintainer review** (within 3 days):
+   - Code quality
+   - Architecture consistency
+   - Performance impact
+   - Security considerations
+
+3. **Changes requested?** Address them:
+   ```bash
+   git commit -m "fix: address review feedback"
+   git push -f origin feature/xxx
+   ```
+
+4. **Approval + Squash + Merge**
+   - PR will be squashed into single commit
+   - Commit message will follow [Conventional Commits](#commit-guidelines)
+
+---
+
+## 📝 Commit Guidelines
+
+We follow **[Conventional Commits](https://www.conventionalcommits.org/)**.
+
+### Format
 
 ```
 <type>(<scope>): <subject>
@@ -456,239 +615,263 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 <footer>
 ```
 
-**Types**: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
+### Types
 
-**Examples**:
+| Type | When to Use |
+|------|-------------|
+| `feat` | New feature (user-facing) |
+| `fix` | Bug fix (user-facing) |
+| `docs` | Documentation only |
+| `style` | Formatting, missing semicolons (no code change) |
+| `refactor` | Code restructuring (no feature/fix) |
+| `perf` | Performance improvement |
+| `test` | Adding or fixing tests |
+| `chore` | Build process, tooling, CI |
+| `ci` | Changes to CI configuration |
+| `revert` | Revert previous commit |
 
-```
-feat(modules): add nuclei template-based vuln scanner
-
-- Implements NucleiModule with template loading
-- Adds emit_tags() for CVE and technology detection
-- Includes resource profile (heavy, 500MB)
-- Closes #45
-
-fix(orchestrator): handle None tag_manager in budget tracker
-
-The budget tracker expects a TagManager but previous code
-could pass None during initialization. Added None check.
-
-Refs: #78
-```
-
-```
-docs(readme): update installation guide for WSL2
-
-Added detailed Windows/WSL2 instructions since many users
-were confused about Docker path issues. Included troubleshooting
-for common permission errors.
-```
-
-### What to Avoid
-
-- ❌ Don't commit secrets, API keys, passwords (use `.env` and add to `.gitignore`)
-- ❌ Don't commit large output files or wordlists (add to `.gitignore`)
-- ❌ Don't modify core interfaces without discussion (TagManager, BaseModule signatures)
-- ❌ Don't push to `main` branch
-- ❌ Don't leave debug `print()` statements
-
----
-
-## Testing
-
-### Running Tests
+### Examples
 
 ```bash
-# All tests
-pytest tests/ -v
+# Good
+git commit -m "feat(modules): add nuclei template categorization"
 
-# Specific file
-pytest tests/test_tag_manager.py -v
+git commit -m "fix(orchestrator): handle null tag_manager in checkpoint load"
 
-# With coverage
-pytest tests/ --cov=core --cov=modules --cov-report=html
+git commit -m "docs(README): add architecture diagram for Phase 4"
 
-# Open htmlcov/index.html to see coverage report
+git commit -m "refactor(scheduler): extract resource estimation logic"
+
+# Bad
+git commit -m "updated stuff"
+git commit -m "fixed bug"
 ```
 
-### Test Coverage Goals
+### Scopes
 
-- Core components: >80%
-- Tool modules: >60%
-- Integration: >40%
+Use these standardized scopes:
 
-**New code should include tests**. At minimum:
-- Unit tests for your class
-- Mocked subprocess tests (don't actually run tools)
-- Integration test if it affects multi-module workflow
-
-### Example Test Pattern
-
-```python
-import pytest
-from unittest.mock import Mock, patch
-from modules.passive.subfinder import SubfinderModule
-
-def test_subfinder_emits_tags():
-    """Test that subfinder sets tags correctly."""
-    # Arrange
-    module = SubfinderModule()
-    mock_tag_manager = Mock()
-    result = {
-        'results': ['sub1.example.com', 'sub2.example.com'],
-        'count': 2
-    }
-
-    # Act
-    module.emit_tags(result, mock_tag_manager)
-
-    # Assert
-    assert mock_tag_manager.add.called
-    call_args = mock_tag_manager.add.call_args
-    assert call_args[0][0] == 'has_subdomains'
-    assert call_args[1]['confidence'] == 'high'
-```
+- `modules` — tool modules (subfinder, nuclei, etc.)
+- `orchestrator` — main execution engine
+- `scheduler` — resource-aware scheduling
+- `tag_manager` — intelligence system
+- `docker_runner` — container execution
+- `config` — YAML configurations
+- `profiles` — resource profiles
+- `dashboard` — web UI
+- `ai` — AI integration
+- `docs` — documentation
+- `tests` — test suite
 
 ---
 
-## Submitting Changes
+## 🎯 Areas for Contribution
 
-### Pull Request Checklist
+### High Priority
 
-Before submitting PR:
+1. **Missing Tool Modules** — see `TOOL_REGISTRY` gaps in orchestrator_v2.py
+2. **Tool Profiles** — empirical measurements in `data/tool_profiles.yaml`
+3. **Dashboard Enhancements** — real-time updates, charts, exports
+4. **AI Report Prompts** — improve Gemini/Claude prompts
+5. **Windows Support** — enable Docker-free mode on Windows
 
-- [ ] Code follows style guide (`black`, type hints, docstrings)
-- [ ] Tests added/updated and passing (`pytest`)
-- [ ] No lint errors (`pylint`)
-- [ ] Commit messages follow conventional format
-- [ ] Branch is up-to-date with `upstream/main`
-- [ ] `PR Title` is concise and descriptive
-- [ ] `PR Description` includes:
-  - What changed and why
-  - Screenshots (if UI changes)
-  - Test instructions (if needed)
-  - Link to related issue
-- [ ] Code is well-commented (explain why, not what)
-- [ ] No secrets or hardcoded credentials
+### Medium Priority
 
-### PR Template
+6. **Performance Optimization** — reduce memory footprint
+7. **Error Handling** — better recovery from tool failures
+8. **Test Coverage** — aim for 80%+ coverage
+9. **CI/CD Pipeline** — automated Docker builds, releases
+10. **Documentation** — tutorials, video walkthroughs
 
-Fill this out in PR description:
+### Low Priority / Good First Issues
+
+11. **Wordlist Updates** — modern directory/parameter wordlists
+12. **Configuration Validation** — schema validation for YAML
+13. **Log Formatting** — improved log output, colors
+14. **Template Improvements** — CHANGELOG, PR templates
+
+---
+
+## 🏗️ Project Structure
+
+```
+huntforge/
+├── core/                    # Framework core
+│   ├── orchestrator_v2.py      ⭐ Main
+│   ├── resource_aware_scheduler.py
+│   ├── tag_manager.py
+│   ├── scope_enforcer.py
+│   ├── budget_tracker.py
+│   ├── hf_logger.py
+│   ├── docker_runner.py
+│   ├── exceptions.py
+│   └── base_module.py          ⭐ Inherit from this
+│
+├── modules/                 # Tool integrations (30+)
+│   ├── passive/
+│   ├── secrets/
+│   ├── discovery/
+│   ├── surface_intel/
+│   ├── enumeration/
+│   ├── content_discovery/
+│   └── vuln_scan/
+│
+├── ai/                      # AI integration
+│   ├── methodology_engine.py   # Ollama + fallback
+│   └── report_generator.py     # Gemini API
+│
+├── config/                  # YAML configurations
+│   ├── default_methodology.yaml ⭐ Master config
+│   ├── smoke_test_methodology.yaml
+│   └── profiles/
+│       ├── lite.yaml
+│       ├── medium.yaml         ⭐ Default
+│       └── full.yaml
+│
+├── data/                    # Static data
+│   ├── tool_profiles.yaml      ⭐ Resource profiles
+│   ├── tool_fingerprints.json
+│   └── bug_bounty_scopes.json
+│
+├── scripts/                 # Utilities
+│   ├── installer.py
+│   ├── validate_setup.py
+│   └── smoke_test.sh
+│
+├── dashboard/               # Flask web UI
+│   ├── app.py
+│   └── templates/
+│
+├── tests/                   # Test suite
+│   ├── unit/
+│   └── integration/
+│
+├── output/                  # Generated (gitignored)
+├── logs/                    # Generated (gitignored)
+├── .env.example            # Environment template
+├── requirements.txt
+├── Dockerfile.kali
+├── docker-compose.yml
+├── huntforge.py            # CLI entry point ⭐
+├── README.md               ⭐ Start here
+└── CONTRIBUTING.md         ⭐ You are here
+```
+
+**⭐ Key files to understand first**
+
+---
+
+## 🐛 Bug Reports
+
+Found a bug? Help us fix it!
+
+### Before Filing
+
+1. **Search existing issues** — maybe it's already known
+2. **Check troubleshooting guide** — might have quick fix
+3. **Test with latest code** — bug might already be fixed
+
+### Issue Template
 
 ```markdown
 ## Description
-[Describe changes]
-
-## Related Issue
-Closes #123
-
-## Type of Change
-- [ ] Bug fix
-- [ ] New feature
-- [ ] Breaking change
-- [ ] Documentation update
-
-## How to Test
-```bash
-# Steps to verify changes
-python3 huntforge.py scan testaspnet.vulnweb.com --profile lite
-```
-
-## Checklist
-- [ ] Tests added/updated
-- [ ] Documentation updated
-- [ ] Code follows standards
-```
-
-### Review Process
-
-1. **Automated checks** run (lint, tests, security scan)
-2. **Maintainer review** - at least 1 maintainer must approve
-3. **Address feedback** - make requested changes
-4. **Squash merge** - PRs merged with "Squash and merge"
-
-**Typical review time**: 2-7 days depending on complexity.
-
----
-
-## Community
-
-### Getting Help
-
-- **Documentation**: Read [README.md](README.md) first
-- **Issues**: Search existing [issues](https://github.com/HuntForgeHQ/huntforge/issues)
-- **Discussions**: Ask in [GitHub Discussions](https://github.com/HuntForgeHQ/huntforge/discussions)
-- **Chat**: Join our Discord (link in README badge)
-
-### Reporting Bugs
-
-Open an issue with:
-
-```markdown
-## Bug Description
-[Clear description]
+[Clear description of bug]
 
 ## Steps to Reproduce
 1. [First step]
 2. [Second step]
+3. [Expected vs actual]
+
+## Environment
+- OS: [e.g., Ubuntu 22.04]
+- HuntForge version: [git commit or tag]
+- Profile: [lite/medium/full]
+- Docker: [yes/no]
+- Python version:
+
+## Logs
+[Attach relevant log snippets, ERROR lines]
 
 ## Expected Behavior
 [What should happen]
 
-## Actual Behavior
-[What actually happens]
-
-## Environment
-- OS: [e.g., Ubuntu 22.04]
-- Python: [e.g., 3.11.5]
-- Docker: [e.g., 24.0.7]
-- HuntForge commit: [e.g., abc123f]
-
 ## Additional Context
-[Screenshots, logs, etc.]
+[Screenshots, context, anything else]
 ```
 
-### Suggesting Features
+**Bugs with clear reproduction steps get fixed fastest.**
 
-We love new ideas! Before opening feature request:
+---
 
-1. Check if it's already been suggested (search issues)
-2. Consider if it fits HuntForge's scope (recon framework, not vuln scanner)
-3. Think about backward compatibility
-4. Consider resource impact (adaptive scheduling must accommodate)
+## 💡 Feature Requests
 
-Feature request template:
+Want a new feature? Tell us!
+
+### Before Suggesting
+
+1. **Check roadmap** — maybe it's planned
+2. **Search existing requests** — avoid duplicates
+3. **Think about scope** — is it general-purpose?
+
+### Feature Request Template
 
 ```markdown
 ## Problem
 [What pain point does this solve?]
 
 ## Proposed Solution
-[How should HuntForge behave?]
+[Describe the feature, how it would work]
 
 ## Alternatives Considered
-[Other approaches]
+[What else did you think about?]
 
-## Resource Impact
-[Will this increase memory/CPU/time requirements? How should profile handle it?]
+## Use Case
+[Who benefits? How would they use it?]
+
+## Similar Tools
+[Do other tools do this? How can we improve?]
 ```
 
 ---
 
-## Recognition
+## 🎉 Recognition
 
-Contributors will be:
+Contributors are recognized in:
 
-- Listed in [README.md](README.md#team) (with permission)
-- Mentioned in release notes
-- Granted repository collaborator permissions after substantial contributions
+- [CONTRIBUTORS.md](CONTRIBUTORS.md) — alphabetical list
+- Release notes — your name in each release you contribute to
+- GitHub's contributor graph — green squares forever!
 
-We value all contributions - code, docs, bugs, ideas, community support.
+**Special contributors** receive:
+- Early access to new features
+- Direct line to maintainers
+- Swag (stickers, t-shirts) at conferences
 
 ---
 
-## Questions?
+## ❓ Questions?
 
-Open a [Discussion](https://github.com/HuntForgeHQ/huntforge/discussions) or email team@huntforge.dev
+- **General:** [GitHub Discussions](https://github.com/yourusername/huntforge/discussions)
+- **Private:** [security@huntforge.dev](mailto:security@huntforge.dev)
+- **Security vulnerabilities:** Report via [responsible disclosure](SECURITY.md)
 
-**Happy hunting!** 🔍
+---
+
+## 📚 Additional Resources
+
+| Resource | Purpose |
+|----------|---------|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Deep dive into system design |
+| [CONFIG_GUIDE.md](CONFIG_GUIDE.md) | Complete YAML reference |
+| [MODULE_DEVELOPMENT.md](MODULE_DEVELOPMENT.md) | Extended module guide |
+| [PERFORMANCE_TUNING.md](PERFORMANCE_TUNING.md) | Optimization tips |
+| [SECURITY.md](SECURITY.md) | Vulnerability disclosure |
+
+---
+
+**Thank you for contributing! The bug bounty community thrives on collaboration.**
+
+---
+
+*Last updated: April 2026*  
+*Maintained by: HuntForge Core Team*
