@@ -139,16 +139,59 @@ def install_via_go(tool: str, go_package: str) -> bool:
         return False
 
 def install_via_pip(tool: str, package_name: str = None) -> bool:
-    """Install Python tool via pip"""
+    """Install Python tool via pip, handling Kali's PEP 668 restrictions"""
     package = package_name or tool
     log_info(f"Installing {tool} via pip...")
 
-    success, output = run_cmd([sys.executable, '-m', 'pip', 'install', '--user', package])
+    # Check for existing virtual environment (Docker container has one at /home/huntforge/venv)
+    possible_venvs = [
+        Path('.') / 'venv',
+        Path.home() / '.huntforge' / 'venv',
+        Path('/home/huntforge/venv'),
+    ]
+    venv_pip = None
+    for venv in possible_venvs:
+        pip_path = venv / 'bin' / 'pip'
+        if pip_path.exists():
+            venv_pip = str(pip_path)
+            break
+
+    if venv_pip:
+        # Use virtual environment's pip (no special flags needed)
+        pip_cmd = [venv_pip, 'install', package]
+    else:
+        # Using system Python - handle Kali's externally managed environment
+        is_root = os.geteuid() == 0 if hasattr(os, 'geteuid') else False
+        pip_cmd = [sys.executable, '-m', 'pip', 'install']
+
+        # On Kali 2024+, need --break-system-packages for system Python
+        # or use --user for user installs (though still may be blocked)
+        if os.path.exists('/etc/kali-release'):
+            if is_root:
+                pip_cmd.append('--break-system-packages')
+            else:
+                # Non-root on Kali: --user may still be blocked; try anyway
+                pip_cmd.append('--user')
+        else:
+            # Non-Kali: use --user for non-root to avoid system modification
+            if not is_root:
+                pip_cmd.append('--user')
+
+        pip_cmd.append(package)
+
+    success, output = run_cmd(pip_cmd)
     if success:
         log_success(f"{tool} installed")
         return True
     else:
         log_error(f"Failed to install {tool}: {output}")
+        # Provide specific guidance for common errors
+        if "externally-managed-environment" in output:
+            log_warning("Kali's PEP 668 protection blocked the install.")
+            log_warning("Solutions:")
+            log_warning("  1. Run installer as root: docker exec -u root huntforge-kali ./scripts/installer.py")
+            log_warning("  2. Create virtualenv: python3 -m venv ~/.huntforge/venv")
+            log_warning("  3. Install from Kali repos: apt install python3-" + tool)
         return False
 
 def install_via_cargo(tool: str, package_name: str = None) -> bool:
@@ -196,7 +239,7 @@ class HuntForgeInstaller:
         'debian': {  # Kali, Ubuntu, Debian
             # Phase 1 - Passive Recon
             'subfinder': ('apt', 'subfinder'),
-            'amass': ('go', 'github.com/OWASP/Amass/v3/cmd/amass@v3.18.3'),
+            'amass': ('apt', 'amass'),
             'assetfinder': ('go', 'github.com/tomnomnom/assetfinder@latest'),
             'theharvester': ('apt', 'theharvester'),
             'findomain': ('apt', 'findomain'),
@@ -216,13 +259,13 @@ class HuntForgeInstaller:
             'httpx': ('go', 'github.com/projectdiscovery/httpx/cmd/httpx@latest'),
             'dnsx': ('apt', 'dnsx'),
             'naabu': ('apt', 'naabu'),
-            'puredns': ('go', 'github.com/d3mondev/puredns/v2/cmd/puredns@latest'),
+            'puredns': ('go', 'github.com/d3mondev/puredns/cmd/puredns@latest'),
             'gowitness': ('go', 'github.com/sensepost/gowitness@latest'),
             'asnmap': ('go', 'github.com/projectdiscovery/asnmap/cmd/asnmap@latest'),
 
             # Phase 4 - Surface Intel
             'whatweb': ('apt', 'whatweb'),
-            'wappalyzer_cli': ('go', 'github.com/wappalyzer/wappalyzer-cli@latest'),
+            'wappalyzer_cli': None,  # Private repo - install manually if needed
             'nmap_service': ('apt', 'nmap'),
             'shodan_cli': ('apt', 'shodan'),
             'censys_cli': ('pip', 'censys'),
@@ -231,7 +274,7 @@ class HuntForgeInstaller:
             'katana': ('apt', 'katana'),
             'gau': ('go', 'github.com/lc/gau/v2/cmd/gau@latest'),
             'gospider': ('go', 'github.com/jaeles-project/gospider@latest'),
-            'paramspider': ('go', 'github.com/ethicalhackingplayground/paramspider/cmd/paramspider@latest'),
+            'paramspider': None,  # Private repo - manual installation required
             'gf_extract': None,  # Part of gf (install gf separately if needed)
             'graphql_voyager': ('pip', 'graphql-voyager'),
             'arjun': ('pip', 'arjun'),
@@ -246,7 +289,7 @@ class HuntForgeInstaller:
 
             # Phase 7 - Vuln Scan
             'nuclei': ('apt', 'nuclei'),
-            'subjack': ('go', 'github.com/haccer/subjack/v2/cmd/subjack@latest'),
+            'subjack': ('go', 'github.com/haccer/subjack/cmd/subjack@latest'),
             'nikto': ('apt', 'nikto'),
             'dalfox': ('go', 'github.com/hahwul/dalfox/v2@latest'),
             'sqlmap': ('apt', 'sqlmap'),
@@ -449,6 +492,42 @@ class HuntForgeInstaller:
             log_error(f"Failed: {output}")
             return False
 
+    def _check_docker_root_warning(self):
+        """Check if running in Docker as non-root and warn about apt/pip issues"""
+        # Detect Docker environment
+        is_docker = os.path.exists('/.dockerenv') or os.path.exists('/.containerenv')
+        if not is_docker:
+            return
+
+        # Check if running as root
+        is_root = os.geteuid() == 0 if hasattr(os, 'geteuid') else False
+        if is_root:
+            return
+
+        # Check if there are any apt or pip tools to install
+        tools = self.PROFILE_TOOLS.get(self.profile, self.PROFILE_TOOLS['lite'])
+        needs_apt = any(
+            self.TOOL_INSTALL_MAP.get(self.os_family, {}).get(t) and
+            self.TOOL_INSTALL_MAP[self.os_family][t] and
+            self.TOOL_INSTALL_MAP[self.os_family][t][0] in ('apt', 'pip')
+            for t in tools
+            if t in self.TOOL_INSTALL_MAP.get(self.os_family, {})
+        )
+
+        if needs_apt:
+            log_warning("")
+            log_warning("=" * 60)
+            log_warning("DETECTED: Running in Docker container as non-root user")
+            log_warning("")
+            log_warning("Some tools require root privileges for installation (apt/pip).")
+            log_warning("")
+            log_warning("RECOMMENDED: Run installer as root:")
+            log_warning("  docker exec -u root huntforge-kali ./scripts/installer.py")
+            log_warning("")
+            log_warning("Alternative: Use virtualenv for Python tools only")
+            log_warning("=" * 60)
+            log_warning("")
+
     def setup_directories(self):
         """Create necessary directory structure"""
         self.huntforge_dir.mkdir(parents=True, exist_ok=True)
@@ -550,6 +629,9 @@ class HuntForgeInstaller:
 
         if not self.check_prerequisites():
             return False
+
+        # Warn about Docker non-root usage
+        self._check_docker_root_warning()
 
         self.setup_directories()
 
