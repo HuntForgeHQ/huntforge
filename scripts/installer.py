@@ -222,10 +222,10 @@ class HuntForgeInstaller:
 
             # Phase 4 - Surface Intel
             'whatweb': ('apt', 'whatweb'),
-            'wappalyzer': ('go', 'github.com/wappalyzer/wappalyzer-cli@latest'),
-            'nmap': ('apt', 'nmap'),
-            'shodan': ('apt', 'shodan'),
-            'censys': ('pip', 'censys'),
+            'wappalyzer_cli': ('go', 'github.com/wappalyzer/wappalyzer-cli@latest'),
+            'nmap_service': ('apt', 'nmap'),
+            'shodan_cli': ('apt', 'shodan'),
+            'censys_cli': ('pip', 'censys'),
 
             # Phase 5 - Enumeration
             'katana': ('apt', 'katana'),
@@ -254,6 +254,8 @@ class HuntForgeInstaller:
             # nuclei_cms: uses 'nuclei' binary with different templates
             # nuclei_auth: uses 'nuclei' binary with different templates
             # wpscan_vuln: uses 'wpscan' binary with different flags
+            # cors_scanner: custom Python module
+            # ssrf_check: custom Python module or nuclei template
         },
         'macos': {  # macOS with Homebrew
             'subfinder': ('brew', 'subfinder'),
@@ -290,7 +292,7 @@ class HuntForgeInstaller:
             # Phase 3 - Discovery
             'httpx', 'dnsx', 'naabu', 'puredns', 'gowitness', 'asnmap',
             # Phase 4 - Surface Intel
-            'whatweb', 'wappalyzer', 'nmap', 'shodan', 'censys',
+            'whatweb', 'wappalyzer_cli', 'nmap_service', 'shodan_cli', 'censys_cli',
             # Phase 5 - Enumeration
             'katana', 'gau', 'gospider', 'paramspider', 'arjun', 'gf_extract', 'graphql_voyager',
             # Phase 6 - Content Discovery
@@ -302,7 +304,7 @@ class HuntForgeInstaller:
             'subfinder', 'amass', 'assetfinder', 'findomain', 'theharvester', 'waybackurls', 'crtsh', 'chaos',
             'gitleaks', 'trufflehog', 'jsluice', 'secretfinder', 'linkfinder', 'github_dorking',
             'httpx', 'dnsx', 'naabu', 'puredns', 'gowitness', 'asnmap',
-            'whatweb', 'wappalyzer', 'nmap', 'shodan', 'censys',
+            'whatweb', 'wappalyzer_cli', 'nmap_service', 'shodan_cli', 'censys_cli',
             'katana', 'gau', 'gospider', 'paramspider', 'arjun', 'gf_extract', 'graphql_voyager',
             'ffuf', 'dirsearch', 'feroxbuster', 'wpscan', 's3scanner', 'cloud_enum',
             'nuclei', 'subjack', 'nikto', 'dalfox', 'sqlmap',
@@ -311,7 +313,7 @@ class HuntForgeInstaller:
             'subfinder', 'amass', 'assetfinder', 'findomain', 'theharvester', 'waybackurls', 'crtsh', 'chaos',
             'gitleaks', 'trufflehog', 'jsluice', 'secretfinder', 'linkfinder', 'github_dorking',
             'httpx', 'dnsx', 'naabu', 'puredns', 'gowitness', 'asnmap',
-            'whatweb', 'wappalyzer', 'nmap', 'shodan', 'censys',
+            'whatweb', 'wappalyzer_cli', 'nmap_service', 'shodan_cli', 'censys_cli',
             'katana', 'gau', 'gospider', 'paramspider', 'arjun', 'gf_extract', 'graphql_voyager',
             'ffuf', 'dirsearch', 'feroxbuster', 'wpscan', 's3scanner', 'cloud_enum',
             'nuclei', 'subjack', 'nikto', 'dalfox', 'sqlmap',
@@ -406,12 +408,14 @@ class HuntForgeInstaller:
                 log_warning(f"No install method for {tool} on {self.os_family}. Skipping.")
                 continue
 
-            method, package = self.TOOL_INSTALL_MAP[self.os_family][tool]
+            install_info = self.TOOL_INSTALL_MAP[self.os_family][tool]
 
             # Skip tools with None method (API-only or manually installed)
-            if method is None:
+            if install_info is None:
                 log_info(f"Skipping {tool}: no automatic install (API-only or manual setup required)")
                 continue
+
+            method, package = install_info
 
             if method == 'apt':
                 success = install_via_apt(tool, package)
