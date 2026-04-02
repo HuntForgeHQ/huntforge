@@ -518,6 +518,9 @@ class OrchestratorV2:
 
             self.run_phase(phase_name, phase_config)
 
+            # Post-phase processing: generate declared output files
+            self._process_phase_outputs(phase_name, phase_config)
+
         # Scan complete
         elapsed = time.time() - self.scan_start_time
         logger.success(f"Scan completed in {elapsed/3600:.1f} hours")
@@ -568,6 +571,79 @@ class OrchestratorV2:
             json.dump(summary, f, indent=2)
 
         logger.info(f"Summary written to {summary_path}")
+
+    def _process_phase_outputs(self, phase_name: str, phase_config: dict):
+        """
+        Post-phase processing: generate declared output files by merging tool results.
+
+        The methodology YAML can declare output_files for a phase. After that phase
+        completes, this method generates those files by aggregating results from
+        the raw tool outputs.
+
+        Currently handles:
+          - subdomains_merged: merges subdomains from subfinder.txt, amass.txt, crtsh.json
+          - phase2_subdomains_from_secrets: extracts subdomains from gitleaks/trufflehog (future)
+        """
+        output_files = phase_config.get('output_files', {})
+        if not output_files:
+            return
+
+        output_dir = Path(f"output/{self.domain}")
+        processed_dir = output_dir / 'processed'
+        processed_dir.mkdir(parents=True, exist_ok=True)
+
+        # Handle subdomains_merged (Phase 1)
+        if 'subdomains_merged' in output_files:
+            merged_path = processed_dir / output_files['subdomains_merged']
+            # Collect subdomains from various raw files
+            subdomains = set()
+
+            # subfinder.txt (one per line)
+            subfinder_path = output_dir / 'raw' / 'subfinder.txt'
+            if subfinder_path.exists():
+                try:
+                    with open(subfinder_path) as f:
+                        for line in f:
+                            line = line.strip().lower()
+                            if line and '.' in line:
+                                subdomains.add(line)
+                except Exception:
+                    pass
+
+            # amass.txt (one per line)
+            amass_path = output_dir / 'raw' / 'amass.txt'
+            if amass_path.exists():
+                try:
+                    with open(amass_path) as f:
+                        for line in f:
+                            line = line.strip().lower()
+                            if line and '.' in line:
+                                subdomains.add(line)
+                except Exception:
+                    pass
+
+            # crtsh.json (list of strings)
+            crtsh_path = output_dir / 'raw' / 'crtsh.json'
+            if crtsh_path.exists():
+                try:
+                    with open(crtsh_path) as f:
+                        data = json.load(f)
+                        for entry in data:
+                            if isinstance(entry, str):
+                                subdomains.add(entry.strip().lower())
+                except Exception:
+                    pass
+
+            # Write merged list
+            if subdomains:
+                with open(merged_path, 'w') as f:
+                    for sub in sorted(subdomains):
+                        f.write(sub + '\n')
+                logger.success(f"Merged {len(subdomains)} unique subdomains → {merged_path}")
+            else:
+                logger.warning("No subdomains found from Phase 1 tools")
+                # Create empty file to avoid downstream warnings
+                merged_path.write_text('')
 
 
 def main():
