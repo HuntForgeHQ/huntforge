@@ -7,7 +7,7 @@ class FfufModule(BaseModule):
     def build_command(self, target: str, container_out: str) -> list:
         wl = self._cfg('wordlist', '/usr/share/wordlists/dirb/common.txt')
         # We need a specific URL. It assumes the orchestrator passes URL to `target` or we build it
-        return ['ffuf', '-u', f'https://{target}/FUZZ', '-w', wl, '-o', container_out, '-of', 'json', '-silent']
+        return ['ffuf', '-u', f'https://{target}/FUZZ', '-w', wl, '-o', container_out, '-of', 'json', '-s']
 
     def run(self, target: str, output_dir: str, tag_manager, config: dict = None) -> dict:
         self.config = config or {}

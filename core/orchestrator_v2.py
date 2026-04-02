@@ -18,6 +18,7 @@ import time
 import sys
 import signal
 import logging
+import inspect
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
@@ -426,6 +427,27 @@ class OrchestratorV2:
             # Prepare input files
             input_files = self._resolve_input_files(phase_config)
 
+            # Filter input_files to only those the tool.run() method can accept
+            try:
+                sig = inspect.signature(tool.run)
+                params = sig.parameters
+                has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
+                if not has_var_keyword:
+                    # Determine accepted keyword names (excluding standard ones)
+                    accepted = set(name for name, p in params.items()
+                                   if p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                                                inspect.Parameter.KEYWORD_ONLY))
+                    # Remove standard arguments we will pass explicitly
+                    standard_args = {'target', 'output_dir', 'tag_manager', 'config'}
+                    accepted = accepted - standard_args
+                    # Keep only those input_files that are in accepted
+                    filtered_input = {k: v for k, v in input_files.items() if k in accepted}
+                else:
+                    filtered_input = input_files
+            except (ValueError, TypeError):
+                # Fallback: use all input_files
+                filtered_input = input_files
+
             # Run the tool (this is blocking)
             logger.info(f"Running {tool_name}...")
             result = tool.run(
@@ -433,7 +455,7 @@ class OrchestratorV2:
                 output_dir=f"output/{self.domain}",
                 tag_manager=self.tag_manager,
                 config=tool_config,
-                **input_files
+                **filtered_input
             )
 
             # Record completion
