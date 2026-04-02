@@ -666,7 +666,7 @@ class HuntForgeInstaller:
 
 def main():
     parser = argparse.ArgumentParser(description="HuntForge Installer")
-    parser.add_argument('--profile', choices=['lite', 'medium', 'full'],
+    parser.add_argument('--profile', choices=['lite', 'medium', 'full', 'professional'],
                        default='lite', help='Installation profile (default: lite)')
     parser.add_argument('--download-wordlists', action='store_true',
                        help='Download minimal wordlists (~100MB)')
