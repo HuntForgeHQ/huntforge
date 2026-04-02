@@ -9,25 +9,50 @@ class WhatWebModule(BaseModule):
 
     def run(self, target: str, output_dir: str, tag_manager, config: dict = None) -> dict:
         self.config = config or {}
-        
-        # Determine if we have a live web list or just a domain
-        host_input_file = os.path.join(output_dir, 'raw', 'httpx.json')
-        container_input_file = host_input_file.replace('\\', '/')
-        
+
         host_output_file = os.path.join(output_dir, 'raw', 'whatweb.json')
-        container_output_file = host_output_file.replace('\\', '/')
+        container_output_file = f"/{host_output_file.replace('\\', '/')}"
         os.makedirs(os.path.dirname(host_output_file), exist_ok=True)
 
-        if os.path.exists(host_input_file):
-            command = ['whatweb', '--input-file', container_input_file, '--log-json', container_output_file]
+        # Check if we have httpx.json (JSON lines) from previous phase
+        httpx_json_path = os.path.join(output_dir, 'raw', 'httpx.json')
+        if os.path.exists(httpx_json_path):
+            # Parse httpx JSON output to extract URLs
+            urls = []
+            try:
+                with open(httpx_json_path, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            try:
+                                data = json.loads(line)
+                                url = data.get('url')
+                                if url:
+                                    urls.append(url)
+                            except json.JSONDecodeError:
+                                continue
+            except Exception:
+                urls = []
+
+            if urls:
+                # Write URLs to a plain text file for whatweb input
+                urls_txt_path = os.path.join(output_dir, 'raw', 'httpx_urls.txt')
+                with open(urls_txt_path, 'w') as f:
+                    f.write('\n'.join(urls) + '\n')
+                container_input = f"/{urls_txt_path.replace('\\', '/')}"
+                command = ['whatweb', '--input-file', container_input, '--log-json', container_output_file]
+            else:
+                # No URLs extracted, fallback to scanning the domain directly
+                command = self.build_command(target, container_output_file)
         else:
+            # No httpx.json, scan the domain directly
             command = self.build_command(target, container_output_file)
-            
+
         self._run_subprocess(command)
 
         try:
             content = self._read_output_file(host_output_file)
-            results = json.loads(content)
+            results = json.loads(content) if content.strip() else []
         except (EmptyOutputError, json.JSONDecodeError):
             results = []
 

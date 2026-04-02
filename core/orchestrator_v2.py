@@ -282,7 +282,7 @@ class OrchestratorV2:
         # Check if_tag condition
         if_tag = tool_config.get('if_tag')
         if if_tag:
-            if not self.tag_manager.has_tag(if_tag):
+            if not self.tag_manager.has(if_tag):
                 return True, f"Tag '{if_tag}' not set"
 
         # Check always flag
