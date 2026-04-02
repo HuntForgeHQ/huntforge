@@ -53,7 +53,7 @@ phases:
 
     output_files:
       subdomains_raw:     "raw/phase1_subdomains_raw.txt"
-      subdomains_merged:  "processed/all_subdomains.txt"
+      subdomains_merged:  "all_subdomains.txt"
 
     tags_emitted:
       has_subdomains:      "Found at least 1 subdomain"
@@ -125,7 +125,7 @@ phases:
       subdomains: "processed/all_subdomains.txt"
 
     output_files:
-      secrets_found: "processed/secrets_found.json"
+      secrets_found: "secrets_found.json"
       gitleaks_results: "raw/gitleaks.json"
 
     tags_emitted:
@@ -185,8 +185,8 @@ phases:
       subdomains_file: "processed/all_subdomains.txt"
 
     output_files:
-      live_hosts:       "processed/live_hosts.json"
-      live_hosts_txt:   "processed/live_hosts.txt"
+      live_hosts:       "live_hosts.json"
+      live_hosts_txt:   "live_hosts.txt"
       screenshots_dir:  "raw/screenshots/"
 
     tags_emitted:
@@ -248,8 +248,8 @@ phases:
       live_hosts: "processed/live_hosts.json"
 
     output_files:
-      tech_stack:    "processed/tech_stack.json"
-      surface_map:   "processed/surface_intel.json"
+      tech_stack:    "tech_stack.json"
+      surface_map:   "surface_intel.json"
 
     tags_emitted:
       has_api:            "API endpoints detected"
@@ -315,9 +315,9 @@ phases:
       tech_stack: "processed/tech_stack.json"
 
     output_files:
-      all_urls:       "processed/all_urls.txt"
-      parameters:     "processed/parameters.json"
-      js_files:       "processed/js_files.txt"
+      all_urls:       "all_urls.txt"
+      parameters:     "parameters.json"
+      js_files:       "js_files.txt"
 
     tags_emitted:
       params_found:          "URL parameters discovered"
@@ -419,8 +419,8 @@ phases:
       all_urls: "processed/all_urls.txt"
 
     output_files:
-      discovered_paths: "processed/discovered_paths.json"
-      interesting_paths: "processed/interesting_paths.txt"
+      discovered_paths: "discovered_paths.json"
+      interesting_paths: "interesting_paths.txt"
 
     tags_emitted:
       admin_panel_found:   "Admin/dashboard path discovered"
@@ -487,9 +487,9 @@ phases:
       interesting_paths: "processed/interesting_paths.txt"
 
     output_files:
-      vulnerabilities: "processed/vulnerabilities.json"
+      vulnerabilities: "vulnerabilities.json"
       nuclei_results: "raw/nuclei.json"
-      takeovers: "processed/takeovers.txt"
+      takeovers: "takeovers.txt"
 
     tags_emitted:
       critical_found:    "Critical severity vulnerability"

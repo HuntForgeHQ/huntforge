@@ -28,7 +28,7 @@ phases:
     depends_on: []
 
     output_files:
-      subdomains_merged: "processed/all_subdomains.txt"
+      subdomains_merged: "all_subdomains.txt"
 
     tags_emitted:
       subdomain_list: "subdomains discovered"
@@ -56,7 +56,7 @@ phases:
       subdomains: "processed/all_subdomains.txt"
 
     output_files:
-      live_hosts: "processed/live_hosts.json"
+      live_hosts: "live_hosts.json"
 
     tags_emitted:
       live_hosts_found: "Live hosts discovered"
@@ -85,7 +85,7 @@ phases:
       live_hosts: "processed/live_hosts.json"
 
     output_files:
-      vulnerabilities: "processed/vulnerabilities.json"
+      vulnerabilities: "vulnerabilities.json"
       nuclei_results: "raw/nuclei.json"
 
     tags_emitted:

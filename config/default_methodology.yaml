@@ -63,7 +63,7 @@ phases:
 
     output_files:
       subdomains_raw:     "raw/phase1_subdomains_raw.txt"
-      subdomains_merged:  "processed/all_subdomains.txt"
+      subdomains_merged:  "all_subdomains.txt"
 
     tags_emitted:
       subdomain_list:   "at least one subdomain was discovered"
@@ -189,7 +189,7 @@ phases:
       subdomains:    "processed/all_subdomains.txt"
 
     output_files:
-      secrets_found:           "processed/secrets_found.json"
+      secrets_found:           "secrets_found.json"
       subdomains_from_secrets: "raw/phase2_subdomains_from_secrets.txt"
 
     tags_emitted:
@@ -303,10 +303,10 @@ phases:
       # Orchestrator merges both input files before passing to tools
 
     output_files:
-      live_hosts:        "processed/live_hosts.json"
-      open_ports:        "processed/open_ports.json"
+      live_hosts:        "live_hosts.json"
+      open_ports:        "open_ports.json"
       screenshots_dir:   "raw/screenshots/"
-      dns_resolved:      "processed/dns_resolved.txt"
+      dns_resolved:      "dns_resolved.txt"
 
     tags_emitted:
       live_hosts_found:       "at least one live HTTP/HTTPS host found"
@@ -420,8 +420,8 @@ phases:
       open_ports:   "processed/open_ports.json"
 
     output_files:
-      surface_map:     "processed/surface_intel.json"
-      tech_stack:      "processed/tech_stack.json"
+      surface_map:     "surface_intel.json"
+      tech_stack:      "tech_stack.json"
 
     # classifier.py reads all tool outputs and sets these tags
     # based on detected signals (see classifier.py for full signal lists)
@@ -584,10 +584,10 @@ phases:
       surface_map:  "processed/surface_intel.json"
 
     output_files:
-      all_urls:        "processed/all_urls.txt"
-      parameters:      "processed/parameters.json"
-      js_files:        "processed/js_files.txt"
-      graphql_schema:  "processed/graphql_schema.json"
+      all_urls:        "all_urls.txt"
+      parameters:      "parameters.json"
+      js_files:        "js_files.txt"
+      graphql_schema:  "graphql_schema.json"
 
     tags_emitted:
       params_found:          "URL parameters discovered — enables dalfox and sqlmap in Phase 7"
@@ -721,12 +721,12 @@ phases:
       - phase_5_enumeration
 
     input_files:
-      live_hosts:  "processed/live_hosts.json"
+      live_hosts:  "live_hosts.json"
 
     output_files:
-      discovered_paths:   "processed/discovered_paths.json"
-      admin_paths:        "processed/admin_paths.txt"
-      backup_files:       "processed/backup_files.txt"
+      discovered_paths:   "discovered_paths.json"
+      admin_paths:        "admin_paths.txt"
+      backup_files:       "backup_files.txt"
 
     tags_emitted:
       admin_panel_found:  "admin or dashboard path discovered"
@@ -849,9 +849,9 @@ phases:
       discovered_paths:  "processed/discovered_paths.json"
 
     output_files:
-      vulnerabilities:   "processed/vulnerabilities.json"
+      vulnerabilities:   "vulnerabilities.json"
       nuclei_results:    "raw/nuclei.json"
-      takeovers:         "processed/takeovers.txt"
+      takeovers:         "takeovers.txt"
 
     tags_emitted:
       critical_found:  "nuclei found critical severity vulnerability"
