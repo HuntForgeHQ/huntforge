@@ -7,6 +7,8 @@
 # ------------------------------------------------------------
 
 import os
+import subprocess
+import shutil
 from core.exceptions import (
     BinaryNotFoundError,
     EmptyOutputError,
@@ -40,10 +42,23 @@ class BaseModule:
 
     def __init__(self, docker_runner: DockerRunner = None):
         """
-        Orchestrator injects a shared DockerRunner. 
+        Orchestrator injects a shared DockerRunner.
         If running standalone for testing, instantiate a new one.
+
+        Auto-detects if running inside the Docker container: if the 'docker'
+        binary is not found in PATH, we assume we're inside the container and
+        will run commands directly via subprocess (no docker exec needed).
         """
-        self.docker_runner = docker_runner or DockerRunner()
+        # Detect execution context: if docker CLI is available, we're on host and should use DockerRunner.
+        # If docker CLI is NOT available, we're inside the container and run directly.
+        self._docker_cli_available = shutil.which('docker') is not None
+
+        if self._docker_cli_available:
+            # Use provided docker_runner or create a new one
+            self.docker_runner = docker_runner or DockerRunner()
+        else:
+            # Inside container - run commands directly, ignore docker_runner
+            self.docker_runner = None
 
     # ── 4 Methods Member 2 Must Implement ────────────────────────
 
@@ -110,41 +125,80 @@ class BaseModule:
     def docker_command(self, target: str, output_file: str) -> list:
         """
         Wraps build_command() with the necessary docker exec prefix.
-        Used if a module legitimately needs to see the raw docker command,
-        but generally modules should just call self._run_subprocess(self.build_command(...))
+        Used if a module legitimately needs to see the raw docker command.
+        Not available when running inside the container (docker CLI not present).
         """
+        if self.docker_runner is None:
+            raise RuntimeError(
+                "docker_command() is not available when running inside the container. "
+                "Use build_command() to get the raw command without docker prefix."
+            )
         return ["docker", "exec", self.docker_runner.container_name] + self.build_command(target, output_file)
 
     def _run_subprocess(self, command: list) -> str:
         """
-        Execute a shell command inside the Docker container.
-        
-        Handles checking if the binary exists using `which` inside Docker,
-        then routes the command through DockerRunner.
-        
-        Exceptions (ToolTimeoutError, ToolExecutionError, DockerNotRunningError) 
-        from DockerRunner bubble up to the orchestrator.
+        Execute a shell command. Depending on execution context:
+        - If running on host (docker CLI available): exec via DockerRunner into container.
+        - If running inside container: run command directly via subprocess.
+
+        Handles checking if the binary exists and then executes.
+
+        Exceptions (ToolTimeoutError, ToolExecutionError, DockerNotRunningError)
+        bubble up to the orchestrator.
         """
         tool_binary = command[0]
         timeout_seconds = self._cfg('timeout', default=300)
 
-        # ── Step 1: Check binary is installed INSIDE container ─────
-        try:
-            check = self.docker_runner.exec_raw(['which', tool_binary], timeout=5)
-            if check.returncode != 0:
+        if self.docker_runner is not None:
+            # ── Docker mode: host running orchestrator, use docker exec ─────
+            # Step 1: Check binary is installed INSIDE container
+            try:
+                check = self.docker_runner.exec_raw(['which', tool_binary], timeout=5)
+                if check.returncode != 0:
+                    raise BinaryNotFoundError(
+                        f"'{tool_binary}' is not installed inside the Kali container.",
+                        tool=tool_binary
+                    )
+            except Exception as e:
+                # If exec_raw fails (e.g., DockerNotRunningError), bubble it up
+                if isinstance(e, BinaryNotFoundError):
+                    raise
+                # Calling is_container_running() will raise DockerNotRunningError if down
+                self.docker_runner.is_container_running()
+
+            # Step 2: Run the tool via DockerRunner
+            return self.docker_runner.exec(command, timeout=timeout_seconds)
+        else:
+            # ── Direct mode: already inside container, run locally ─────
+            # Check binary exists using shutil.which
+            if not shutil.which(tool_binary):
                 raise BinaryNotFoundError(
-                    f"'{tool_binary}' is not installed inside the Kali container.",
+                    f"'{tool_binary}' is not installed or not in PATH.",
                     tool=tool_binary
                 )
-        except Exception as e:
-            # If exec_raw fails (e.g., DockerNotRunningError), bubble it up
-            if isinstance(e, BinaryNotFoundError):
-                raise
-            # Calling is_container_running() will raise DockerNotRunningError if down
-            self.docker_runner.is_container_running()
 
-        # ── Step 2: Run the tool via DockerRunner ──────────────────
-        return self.docker_runner.exec(command, timeout=timeout_seconds)
+            # Run the command directly
+            try:
+                result = subprocess.run(
+                    command,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout_seconds
+                )
+            except subprocess.TimeoutExpired:
+                raise ToolTimeoutError(
+                    f"'{tool_binary}' timed out after {timeout_seconds}s.",
+                    tool=tool_binary
+                )
+
+            if result.returncode != 0:
+                raise ToolExecutionError(
+                    f"'{tool_binary}' exited with code {result.returncode}. "
+                    f"stderr: {result.stderr[:500].strip()}",
+                    tool=tool_binary
+                )
+
+            return result.stdout
 
     def _read_output_file(self, host_filepath: str) -> str:
         """
