@@ -1,6 +1,8 @@
 # Python virtual environments
 lib/
 lib64/
+huntforge/lib/
+huntforge/lib64/
 venv/
 ENV/
 env/
