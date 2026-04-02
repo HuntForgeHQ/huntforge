@@ -24,20 +24,20 @@ tool_selection:
     enabled_tools: ['httpx', 'naabu']
     # Skipped: dnsx (httpx validates DNS), puredns (rare extra value), gowitness (heavy), asnmap (optional)
 
-  # Phase 4 - Surface Intel: 2 targeted scanners
+  # Phase 4 - Surface Intel: Single lightweight scanner
   phase_4_surface_intelligence:
-    enabled_tools: ['whatweb', 'wappalyzer_cli']
-    # Skipped: nmap_service (slow), shodan_cli (API), censys_cli (API)
+    enabled_tools: ['whatweb']
+    # Skipped: wappalyzer_cli (manual install), nmap_service (slow), shodan_cli (API), censys_cli (API)
 
-  # Phase 5 - Enumeration: Focused crawlers + optional param tools
+  # Phase 5 - Enumeration: Focused crawlers + param scanner
   phase_5_enumeration:
-    enabled_tools: ['katana', 'gau', 'paramspider']
-    # Skipped: gospider (dup of katana), gf_extract (post-process), graphql_voyager (conditional), arjun (conditional)
+    enabled_tools: ['katana', 'gau', 'arjun']
+    # Skipped: gospider (dup of katana), paramspider (not auto-installable), gf_extract (post-process), graphql_voyager (conditional)
 
-  # Phase 6 - Content Discovery: Single primary fuzzer + conditional CMS
+  # Phase 6 - Content Discovery: Primary fuzzer + conditional CMS scanner
   phase_6_content_discovery:
-    enabled_tools: ['ffuf']
-    # Skipped: dirsearch/feroxbuster (duplicate ffuf), wpscan (conditional), s3scanner/cloud_enum (rare value)
+    enabled_tools: ['ffuf', 'wpscan']
+    # Skipped: dirsearch/feroxbuster (duplicate ffuf), s3scanner/cloud_enum (rare value)
 
   # Phase 7 - Vuln Scan: High-signal scanners only
   phase_7_vuln_scan:
@@ -69,8 +69,6 @@ tool_overrides:
   whatweb:
     aggression: 1
     threads: 25
-  wappalyzer_cli:
-    timeout: 10
 
   # Phase 5: Moderate crawling
   katana:
@@ -80,7 +78,7 @@ tool_overrides:
     rate_limit: 150
   gau:
     threads: 5
-  paramspider:
+  arjun:
     threads: 10
 
   # Phase 6: Single fuzzer at moderate intensity
