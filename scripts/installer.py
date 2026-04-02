@@ -337,17 +337,17 @@ class HuntForgeInstaller:
         # Phase 3 - Live Discovery (2 tools)
         'httpx', 'naabu',
 
-        # Phase 4 - Surface Intel (2 tools)
-        'whatweb', 'wappalyzer_cli',
+        # Phase 4 - Surface Intel (1 tool)
+        'whatweb',
 
-        # Phase 5 - Enumeration (3-4 tools)
-        'katana', 'gau', 'paramspider', 'arjun', 'graphql_voyager',
+        # Phase 5 - Enumeration (3 tools)
+        'katana', 'gau', 'arjun',
 
-        # Phase 6 - Content Discovery (1-2 tools)
+        # Phase 6 - Content Discovery (2 tools)
         'ffuf', 'wpscan',
 
-        # Phase 7 - Vuln Scan (3-4 tools)
-        'nuclei', 'subjack', 'dalfox', 'sqlmap',
+        # Phase 7 - Vuln Scan (3 tools)
+        'nuclei', 'subjack', 'dalfox',
     ]
 
     # LITE PROFILE: Minimal setup for testing
