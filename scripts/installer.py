@@ -111,7 +111,7 @@ def install_via_apt(tool: str, package_name: str = None) -> bool:
     # Update package list (if not done recently)
     run_cmd(sudo_cmd + ['apt-get', 'update'], check=False)
 
-    success, output = run_cmd(sudo_cmd + ['apt-get', 'install', '-y', package])
+    success, output = run_cmd(sudo_cmd + ['apt-get', 'install', '-y', package], capture_output=True)
     if success:
         log_success(f"{tool} installed")
         return True
@@ -130,7 +130,7 @@ def install_via_go(tool: str, go_package: str) -> bool:
         log_error("Go is not installed. Install Go first or use apt/other method.")
         return False
 
-    success, output = run_cmd(['go', 'install', go_package])
+    success, output = run_cmd(['go', 'install', go_package], capture_output=True)
     if success:
         log_success(f"{tool} installed to ~/go/bin")
         return True
@@ -179,14 +179,14 @@ def install_via_pip(tool: str, package_name: str = None) -> bool:
 
         pip_cmd.append(package)
 
-    success, output = run_cmd(pip_cmd)
+    success, output = run_cmd(pip_cmd, capture_output=True)
     if success:
         log_success(f"{tool} installed")
         return True
     else:
         log_error(f"Failed to install {tool}: {output}")
         # Provide specific guidance for common errors
-        if "externally-managed-environment" in output:
+        if output and "externally-managed-environment" in output:
             log_warning("Kali's PEP 668 protection blocked the install.")
             log_warning("Solutions:")
             log_warning("  1. Run installer as root: docker exec -u root huntforge-kali ./scripts/installer.py")
@@ -204,7 +204,7 @@ def install_via_cargo(tool: str, package_name: str = None) -> bool:
         log_error("cargo (Rust) is not installed. Install Rust first or use apt/other method.")
         return False
 
-    success, output = run_cmd(['cargo', 'install', package])
+    success, output = run_cmd(['cargo', 'install', package], capture_output=True)
     if success:
         log_success(f"{tool} installed to ~/.cargo/bin")
         return True
@@ -271,12 +271,12 @@ class HuntForgeInstaller:
             'censys_cli': ('pip', 'censys'),
 
             # Phase 5 - Enumeration
-            'katana': ('apt', 'katana'),
+            'katana': ('go', 'github.com/projectdiscovery/katana/cmd/katana@latest'),
             'gau': ('go', 'github.com/lc/gau/v2/cmd/gau@latest'),
             'gospider': ('go', 'github.com/jaeles-project/gospider@latest'),
             'paramspider': None,  # Private repo - manual installation required
             'gf_extract': None,  # Part of gf (install gf separately if needed)
-            'graphql_voyager': ('pip', 'graphql-voyager'),
+            'graphql_voyager': None,  # Built-in module, part of HuntForge
             'arjun': ('pip', 'arjun'),
 
             # Phase 6 - Content Discovery
@@ -500,7 +500,7 @@ class HuntForgeInstaller:
     def install_via_brew(self, tool: str, package: str) -> bool:
         """Install via Homebrew (macOS)"""
         log_info(f"Installing {tool} via brew...")
-        success, output = run_cmd(['brew', 'install', package])
+        success, output = run_cmd(['brew', 'install', package], capture_output=True)
         if success:
             log_success(f"{tool} installed")
             return True
