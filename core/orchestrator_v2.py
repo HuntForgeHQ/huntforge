@@ -578,8 +578,8 @@ def main():
     parser.add_argument("domain", help="Target domain")
     parser.add_argument("--methodology", default="config/default_methodology.yaml",
                        help="Path to methodology YAML")
-    parser.add_argument("--profile", default="medium", choices=['lite', 'medium', 'full'],
-                       help="Resource profile")
+    parser.add_argument("--profile", default="professional", choices=['lite', 'medium', 'full', 'professional'],
+                       help="Resource profile (lite, medium, full, professional)")
     parser.add_argument("--no-checkpoint", action="store_true",
                        help="Disable checkpoint/resume")
     parser.add_argument("--checkpoint-file",

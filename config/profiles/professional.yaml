@@ -1,0 +1,109 @@
+# Resource Profile: Professional (8-16 GB RAM)
+# The real-world bug bounty hunter's profile: 16 essential tools, balanced speed/coverage.
+# Based on actual workflows from top hunters. ~2-4 hours total runtime.
+
+resource_limits:
+  max_concurrent_tools: 4
+  max_ram_gb: 12.0
+  max_cpu_percent: 85
+  safety_margin_percent: 15
+
+tool_selection:
+  # Phase 1 - Passive Recon: 3 best sources only
+  phase_1_passive_recon:
+    enabled_tools: ['subfinder', 'amass', 'crtsh']
+    # Skipped: theharvester (slow), assetfinder (noisy), chaos (API), findomain (duplicate), waybackurls (optional)
+
+  # Phase 2 - Secrets & OSINT: 2 fast scanners
+  phase_2_secrets_osint:
+    enabled_tools: ['gitleaks', 'trufflehog']
+    # Skipped: github_dorking (very slow), jsluice (better in Phase 5), secretfinder (noisy), linkfinder (slow)
+
+  # Phase 3 - Live Discovery: 2 essential probes
+  phase_3_asset_discovery:
+    enabled_tools: ['httpx', 'naabu']
+    # Skipped: dnsx (httpx validates DNS), puredns (rare extra value), gowitness (heavy), asnmap (optional)
+
+  # Phase 4 - Surface Intel: 2 targeted scanners
+  phase_4_surface_intelligence:
+    enabled_tools: ['whatweb', 'wappalyzer_cli']
+    # Skipped: nmap_service (slow), shodan_cli (API), censys_cli (API)
+
+  # Phase 5 - Enumeration: Focused crawlers + optional param tools
+  phase_5_enumeration:
+    enabled_tools: ['katana', 'gau', 'paramspider']
+    # Skipped: gospider (dup of katana), gf_extract (post-process), graphql_voyager (conditional), arjun (conditional)
+
+  # Phase 6 - Content Discovery: Single primary fuzzer + conditional CMS
+  phase_6_content_discovery:
+    enabled_tools: ['ffuf']
+    # Skipped: dirsearch/feroxbuster (duplicate ffuf), wpscan (conditional), s3scanner/cloud_enum (rare value)
+
+  # Phase 7 - Vuln Scan: High-signal scanners only
+  phase_7_vuln_scan:
+    enabled_tools: ['nuclei', 'subjack', 'dalfox']
+    # Skipped: nikto (noisy), sqlmap (very slow, optional), nuclei_* (included), wpscan_vuln (already covered), cors_scanner/ssrf_check (low signal)
+
+tool_overrides:
+  # Optimize for professional's 2-4h timeline
+
+  # Phase 1: Balanced passive recon
+  subfinder:
+    threads: 50
+    rate_limit: 150
+    sources: "certificate,dns,dnsdumpster,github,gitlab,virustotal"
+  amass:
+    threads: 10
+    timeout: 300
+
+  # Phase 3: Light probing
+  httpx:
+    threads: 50
+    rate_limit: 100
+    timeout_per_host: 5
+  naabu:
+    rate: 1000
+    retries: 1
+
+  # Phase 4: Quick tech detection
+  whatweb:
+    aggression: 1
+    threads: 25
+  wappalyzer_cli:
+    timeout: 10
+
+  # Phase 5: Moderate crawling
+  katana:
+    depth: 3
+    concurrency: 10
+    js_crawl: true
+    rate_limit: 150
+  gau:
+    threads: 5
+  paramspider:
+    threads: 10
+
+  # Phase 6: Single fuzzer at moderate intensity
+  ffuf:
+    threads: 50
+    rate_limit: null
+    match_codes: "200,201,204,301,302,307,308,401,403,405"
+    filter_size: 100
+
+  # Phase 7: Focused vulnerability detection
+  nuclei:
+    concurrency: 25
+    bulk_size: 50
+    rate_limit: 100
+    templates: "cves,exposures,takeovers,vulnerabilities"
+    severity: "critical,high,medium"
+  subjack:
+    threads: 100
+  dalfox:
+    worker: 80
+
+scheduler:
+  light_phase_concurrency: 6   # Allow some parallelism in phases 1,2,5
+  heavy_phase_concurrency: 2   # Sequential in phases 6,7
+  enable_throttling: true
+  respect_user_activity: true

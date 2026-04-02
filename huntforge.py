@@ -285,9 +285,9 @@ def build_parser():
 
     scan.add_argument(
         "--profile",
-        choices=["lite", "medium", "full"],
-        default="medium",
-        help="Machine resource profile (lite: 4-8GB, medium: 8-16GB, full: 16GB+)"
+        choices=["lite", "medium", "full", "professional"],
+        default="professional",
+        help="Machine resource profile (lite: 4-8GB, medium: 8-16GB, full: 16GB+, professional: 8-16GB optimized)"
     )
 
     scan.add_argument(
