@@ -36,38 +36,56 @@ HuntForge is built on a highly modular, decoupled architecture where AI, memory 
 
 ```mermaid
 flowchart LR
-    A[CLI Input] --> B[AI Methodology Engine]
-    B --> C(OrchestratorV2)
-    
-    subgraph Isolated Docker Environment
-    C <--> |Throttles Concurrency| D((Resource Monitor))
-    C --> |Injects State| E[Tag Manager]
-    E --> |Resolves if_tag| F[16 Core Modules]
+    %% Theming
+    classDef control fill:#1f2937,stroke:#3b82f6,stroke-width:2px,color:#fff,rx:8,ry:8
+    classDef ai fill:#312e81,stroke:#a855f7,stroke-width:2px,color:#fff,rx:8,ry:8
+    classDef system fill:#0f172a,stroke:#10b981,stroke-width:2px,color:#fff,rx:8,ry:8
+    classDef external fill:#b91c1c,stroke:#f87171,stroke-width:2px,color:#fff,rx:15,ry:15
+
+    %% Nodes
+    A["💻 CLI Input"]:::control --> B{"🧠 AI Methodology Engine"}:::ai
+    B --> C["⚙️ OrchestratorV2"]:::system
+    B -. "gemini-2.5-flash" .-> OR["☁️ OpenRouter API"]:::ai
+    C -->|Post-Recon| Rep["📝 AI Report Generator"]:::ai
+    Rep -.-> OR
+
+    subgraph DOCKER ["🛡️ Isolated Kali Docker Environment"]
+        direction TB
+        C <--> |Throttles| RM(("📊 Resource Monitor\n(CPU/RAM)")):::system
+        C --> |Injects State| TM["🏷️ Tag Manager"]:::system
+        TM --> |Matches if_tag| Mod["🧰 16 Core Modules\n(Nuclei, Dalfox, etc.)"]:::system
+        RM -. |Prevents OOM| .-> Mod
     end
-    
-    F --> |Executes binaries| Z[(Target)]
-    D --> |Prevents OOM| F
-    B -.-> |gemini-2.5-flash| G[(OpenRouter Cloud)]
-    C --> |Post-Recon Analysis| H[AI Report Generator]
-    H -.-> G
+
+    Mod ===>|Executes Binaries| Target[("🎯 Target Scope")]:::external
 ```
 
 ### The Tag-Flow Execution Lifecycle
 
 ```mermaid
 graph TD
-    classDef start fill:#1f2937,stroke:#3b82f6,stroke-width:2px,color:#f8fafc
-    classDef active fill:#0f172a,stroke:#10b981,stroke-width:2px,color:#f8fafc
-    classDef passive fill:#1e293b,stroke:#8b5cf6,stroke-width:2px,color:#f8fafc
-    classDef ai fill:#312e81,stroke:#a855f7,stroke-width:2px,color:#f8fafc
+    %% Styling
+    classDef phase fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#fff,rx:8,ry:8
+    classDef ai_phase fill:#312e81,stroke:#a855f7,stroke-width:2px,color:#fff,rx:8,ry:8
+    classDef tag fill:#065f46,stroke:#10b981,stroke-width:1px,color:#fff,rx:15,ry:15
 
-    A[AI Engine: Generate Strategy]:::ai --> B{Dynamic YAML Methodology}:::ai
-    B --> C[Phase 1: Passive Recon <br/> Subfinder, Crt.sh]:::passive
-    C -- "emits 'subdomains_found'" --> D[Phase 2: Active Discovery <br/> Httpx, Naabu]:::active
-    D -- "emits 'live_hosts_found'" --> E[Phase 3: Surface Intel <br/> WhatWeb, Wappalyzer]:::active
-    E -- "emits 'has_parameters'" --> F[Phase 4: Targeted Enum <br/> Katana, GAU]:::active
-    F -- "emits 'xss_candidates'" --> G[Phase 5: Vulnerability Sweeps <br/> Dalfox, Nuclei]:::active
-    G --> H[AI Engine: Executive Markdown Report]:::ai
+    %% Nodes
+    A["🤖 AI: Generate Strategy"]:::ai_phase --> B{"📄 Dynamic YAML Setup"}:::ai_phase
+    B -.-> C["🔍 Phase 1: Passive Recon\n(Subfinder, Crt.sh)"]:::phase
+    
+    C --> T1("🏷️ tag: subdomains_found"):::tag
+    T1 --> D["⚡ Phase 2: Active Discovery\n(Httpx, Naabu)"]:::phase
+    
+    D --> T2("🏷️ tag: live_hosts_found"):::tag
+    T2 --> E["🌐 Phase 3: Surface Intel\n(WhatWeb, Wappalyzer)"]:::phase
+    
+    E --> T3("🏷️ tag: has_api / has_params"):::tag
+    T3 --> F["🕷️ Phase 4: Targeted Enum\n(Katana, GAU, Arjun)"]:::phase
+    
+    F --> T4("🏷️ tag: xss_candidates / sqli"):::tag
+    T4 --> G["💣 Phase 5: Vulnerability Sweeps\n(Nuclei, Dalfox, SQLMap)"]:::phase
+    
+    G -.-> H["📑 AI: Executive Markdown Report"]:::ai_phase
 ```
 
 ---
