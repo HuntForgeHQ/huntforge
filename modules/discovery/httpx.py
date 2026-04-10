@@ -16,9 +16,11 @@ class HttpxModule(BaseModule):
 
     def run(self, target: str, output_dir: str, tag_manager, config: dict = None) -> dict:
         self.config = config or {}
-        
-        # Input file from subfinder
-        host_input_file = os.path.join(output_dir, 'raw', 'subfinder.txt')
+        # Input file from subfinder or merged Phase 1 output
+        host_input_file = os.path.join(output_dir, 'processed', 'all_subdomains.txt')
+        if not os.path.exists(host_input_file):
+            host_input_file = os.path.join(output_dir, 'raw', 'subfinder.txt')
+            
         container_input_file = host_input_file.replace('\\', '/')
         
         if not os.path.exists(host_input_file):

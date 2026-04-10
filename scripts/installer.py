@@ -328,8 +328,8 @@ class HuntForgeInstaller:
 
     # PROFESSIONAL PROFILE: What real bug bounty hunters actually use (16 tools)
     PROFESSIONAL_TOOLS = [
-        # Phase 1 - Passive Recon (3 tools)
-        'subfinder', 'amass', 'crtsh',
+        # Phase 1 - Passive Recon (2 tools)
+        'subfinder', 'crtsh',
 
         # Phase 2 - Secrets (2 tools)
         'gitleaks', 'trufflehog',
@@ -612,7 +612,7 @@ class HuntForgeInstaller:
             # Add project root to path
             sys.path.insert(0, str(Path.cwd()))
             from core.tag_manager import TagManager
-            from core.orchestrator import Orchestrator
+            from core.orchestrator_v2 import OrchestratorV2
             log_success("HuntForge core modules OK")
             return True
         except ImportError as e:
@@ -635,7 +635,7 @@ class HuntForgeInstaller:
         print("  1. Edit ~/.huntforge/scope.json to add your targets")
         print("  2. Optional: Set API keys in .env file")
         print("  3. Run your first scan:")
-        print(f"     python3 huntforge.py scan testaspnet.vulnweb.com --profile {self.profile}")
+        print(f"     python3 huntforge.py scan your-target.com")
         print("\nFor help: python3 huntforge.py --help")
         print("="*60 + "\n")
 

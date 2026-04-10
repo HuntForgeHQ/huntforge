@@ -242,6 +242,7 @@ temp/
 
 # Test targets (if created locally)
 test-targets/
+example.com/
 
 # Wordlists (downloaded by users, too large for git)
 wordlists/
@@ -257,3 +258,7 @@ SecLists/
 apikeys.txt
 secrets.json
 credentials.yaml
+
+# AI assistants
+.claude/
+.gemini/

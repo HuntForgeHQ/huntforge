@@ -15,7 +15,12 @@
       "Bash(python3 -m py_compile modules/base_module.py)",
       "Bash(python3:*)",
       "Bash(docker-compose down:*)",
-      "Bash(docker-compose up:*)"
+      "Bash(docker-compose up:*)",
+      "Bash(docker:*)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec huntforge-kali:*)",
+      "Bash(MSYS_NO_PATHCONV=1 docker exec:*)",
+      "Bash(echo \"Exit code: $?\")",
+      "Bash(echo \"Exit: $?\")"
     ]
   }
 }

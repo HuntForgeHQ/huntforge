@@ -2,8 +2,11 @@
 """
 HuntForge Orchestrator V2 - Resource-Aware Adaptive Scheduling
 
-Key improvements over v1:
-- Adaptive concurrency based on system resources (not fixed)
+Professional-grade orchestrator. Runs exactly what the methodology YAML defines.
+No profile filtering — the methodology IS the single source of truth.
+
+Key features:
+- Adaptive concurrency based on system resources
 - Phase-specific scheduling strategies (light vs heavy)
 - Parameter scaling (reduce threads if memory constrained)
 - Checkpoint/resume capability
@@ -12,12 +15,12 @@ Key improvements over v1:
 """
 
 import os
+import gc
 import yaml
 import json
 import time
 import sys
 import signal
-import logging
 import inspect
 from pathlib import Path
 from datetime import datetime
@@ -43,139 +46,99 @@ from core.resource_aware_scheduler import (
     SystemCapacity
 )
 
-# Import ALL tool modules (same as v1)
-from modules.passive.subfinder import SubfinderModule as Subfinder
-from modules.passive.amass import AmassModule as Amass
-from modules.passive.crtsh import CrtshModule as Crtsh
-from modules.passive.theharvester import TheHarvesterModule as TheHarvester
-from modules.passive.assetfinder import AssetfinderModule as Assetfinder
-from modules.passive.chaos import ChaosModule as Chaos
-from modules.passive.findomain import FindomainModule as Findomain
-from modules.passive.waybackurls import WaybackurlsModule as Waybackurls
+# ═══════════════════════════════════════════════════════════════════
+# TOOL IMPORTS — Professional methodology only (16 essential tools)
+# ═══════════════════════════════════════════════════════════════════
 
+# Phase 1 — Passive Recon (3 tools)
+from modules.passive.subfinder import SubfinderModule as Subfinder
+from modules.passive.crtsh import CrtshModule as Crtsh
+
+# Phase 2 — Secrets & OSINT (2 tools)
 from modules.secrets.gitleaks import GitleaksModule as Gitleaks
 from modules.secrets.trufflehog import TrufflehogModule as Trufflehog
-from modules.secrets.github_dorking import GithubDorkingModule as GithubDorking
-from modules.secrets.secretfinder import SecretfinderModule as Secretfinder
-from modules.secrets.jsluice import JsluiceModule as Jsluice
-from modules.secrets.linkfinder import LinkfinderModule as Linkfinder
 
+# Phase 3 — Live Asset Discovery (2 tools)
 from modules.discovery.httpx import HttpxModule as Httpx
 from modules.discovery.naabu import NaabuModule as Naabu
-from modules.discovery.dnsx import DnsxModule as Dnsx
-from modules.discovery.puredns import PurednsModule as Puredns
-from modules.discovery.gowitness import GowitnessModule as Gowitness
-from modules.discovery.asnmap import AsnmapModule as Asnmap
 
+# Phase 4 — Surface Intelligence (2 tools)
 from modules.surface_intel.whatweb import WhatWebModule as WhatWeb
 from modules.surface_intel.wappalyzer import WappalyzerModule as Wappalyzer
-from modules.surface_intel.nmap_service import NmapServiceModule as NmapService
-from modules.surface_intel.shodan_cli import ShodanCliModule as ShodanCli
-from modules.surface_intel.censys_cli import CensysCliModule as CensysCli
 
+# Phase 5 — Enumeration (5 tools, 2 conditional)
 from modules.enumeration.katana import KatanaModule as Katana
 from modules.enumeration.gau import GauModule as Gau
 from modules.enumeration.paramspider import ParamspiderModule as Paramspider
-from modules.enumeration.gospider import GospiderModule as Gospider
-from modules.enumeration.gf_extract import GfExtractModule as GfExtract
-from modules.enumeration.graphql_voyager import GraphqlVoyagerModule as GraphqlVoyager
 from modules.enumeration.arjun import ArjunModule as Arjun
+from modules.enumeration.graphql_voyager import GraphqlVoyagerModule as GraphqlVoyager
 
+# Phase 6 — Content Discovery (2 tools, 1 conditional)
 from modules.content_discovery.ffuf import FfufModule as Ffuf
-from modules.content_discovery.dirsearch import DirsearchModule as Dirsearch
-from modules.content_discovery.feroxbuster import FeroxbusterModule as Feroxbuster
 from modules.content_discovery.wpscan import WpscanModule as Wpscan
 
+# Phase 7 — Vulnerability Scanning (5 tools, 3 conditional)
 from modules.vuln_scan.nuclei import NucleiModule as Nuclei
 from modules.vuln_scan.subjack import SubjackModule as Subjack
 from modules.vuln_scan.dalfox import DalfoxModule as Dalfox
-from modules.vuln_scan.nikto import NiktoModule as Nikto
 from modules.vuln_scan.sqlmap import SQLMapModule as SQLMap
-from modules.vuln_scan.wpscan_vuln import WpscanVulnModule as WpscanVuln
-from modules.vuln_scan.cors_scanner import CorsScannerModule as CorsScanner
-from modules.vuln_scan.ssrf_check import SSRFCheckModule as SSRFCheck
+
+# ═══════════════════════════════════════════════════════════════════
+# TOOL REGISTRY — maps YAML tool names to Python classes
+# ═══════════════════════════════════════════════════════════════════
 
 TOOL_REGISTRY = {
-    # Phase 1 - Passive Recon (all implemented)
-    'subfinder': Subfinder,
-    'amass': Amass,
-    'crtsh': Crtsh,
-    'theharvester': TheHarvester,
-    'assetfinder': Assetfinder,
-    'chaos': Chaos,
-    'findomain': Findomain,
-    'waybackurls': Waybackurls,
+    # Phase 1 — Passive Recon
+    'subfinder':        Subfinder,
+    'crtsh':            Crtsh,
 
-    # Phase 2 - Secrets & OSINT (all implemented)
-    'gitleaks': Gitleaks,
-    'trufflehog': Trufflehog,
-    'github_dorking': GithubDorking,
-    'secretfinder': Secretfinder,
-    'jsluice': Jsluice,
-    'linkfinder': Linkfinder,
+    # Phase 2 — Secrets & OSINT
+    'gitleaks':         Gitleaks,
+    'trufflehog':       Trufflehog,
 
-    # Phase 3 - Live Asset Discovery (all implemented)
-    'httpx': Httpx,
-    'naabu': Naabu,
-    'dnsx': Dnsx,
-    'puredns': Puredns,
-    'gowitness': Gowitness,
-    'asnmap': Asnmap,
+    # Phase 3 — Live Asset Discovery
+    'httpx':            Httpx,
+    'naabu':            Naabu,
 
-    # Phase 4 - Surface Intelligence (all implemented)
-    'whatweb': WhatWeb,
-    'wappalyzer_cli': Wappalyzer,
-    'nmap_service': NmapService,
-    'shodan_cli': ShodanCli,
-    'censys_cli': CensysCli,
+    # Phase 4 — Surface Intelligence
+    'whatweb':          WhatWeb,
+    'wappalyzer_cli':   Wappalyzer,
 
-    # Phase 5 - Enumeration (all implemented)
-    'katana': Katana,
-    'gau': Gau,
-    'paramspider': Paramspider,
-    'gospider': Gospider,
-    'gf_extract': GfExtract,
-    'graphql_voyager': GraphqlVoyager,
-    'arjun': Arjun,
+    # Phase 5 — Enumeration
+    'katana':           Katana,
+    'gau':              Gau,
+    'paramspider':      Paramspider,
+    'arjun':            Arjun,
+    'graphql_voyager':  GraphqlVoyager,
 
-    # Phase 6 - Content Discovery (all implemented)
-    'ffuf': Ffuf,
-    'dirsearch': Dirsearch,
-    'feroxbuster': Feroxbuster,
-    'wpscan': Wpscan,
-    's3scanner': None,
-    'cloud_enum': None,
+    # Phase 6 — Content Discovery
+    'ffuf':             Ffuf,
+    'wpscan':           Wpscan,
 
-    # Phase 7 - Vulnerability Scanning (all implemented)
-    'nuclei': Nuclei,
-    'nuclei_cms': Nuclei,
-    'nuclei_auth': Nuclei,
-    'subjack': Subjack,
-    'nikto': Nikto,
-    'dalfox': Dalfox,
-    'sqlmap': SQLMap,
-    'wpscan_vuln': WpscanVuln,
-    'cors_scanner': CorsScanner,
-    'ssrf_check': SSRFCheck,
+    # Phase 7 — Vulnerability Scanning
+    'nuclei':           Nuclei,
+    'nuclei_auth':      Nuclei,
+    'subjack':          Subjack,
+    'dalfox':           Dalfox,
+    'sqlmap':           SQLMap,
 }
 
 
 class OrchestratorV2:
     """
-    Next-gen orchestrator with adaptive resource scheduling.
+    Professional-grade orchestrator with adaptive resource scheduling.
 
-    Key differences from v1:
-    1. Uses AdaptiveScheduler instead of fixed thread pools
-    2. Supports checkpoint/resume
-    3. Optional Phase 7 (user prompt)
-    4. Real-time resource monitoring
-    5. Parameter scaling based on available RAM
+    Key principles:
+    1. The methodology YAML is the single source of truth
+    2. No profile filtering — execute exactly what the YAML defines
+    3. Adaptive scheduling based on real-time system resources
+    4. Checkpoint/resume for long-running scans
+    5. Optional Phase 7 with human decision point
     """
 
-    def __init__(self, domain: str, methodology_path: str, profile: str = "medium",
+    def __init__(self, domain: str, methodology_path: str,
                  checkpoint_file: Optional[str] = None, adaptive: bool = True):
         self.domain = domain
-        self.profile = profile
         self.adaptive = adaptive
         self.methodology_path = Path(methodology_path)
         self.checkpoint_file = checkpoint_file or f"output/{domain}/checkpoint.json"
@@ -184,14 +147,11 @@ class OrchestratorV2:
         with open(self.methodology_path) as f:
             self.methodology = yaml.safe_load(f)
 
-        # Load profile configuration (tool selection + overrides)
-        self.profile_config = self._load_profile_config()
-
         # Initialize core components
         self.tag_manager = TagManager()
         self.budget_tracker = BudgetTracker()
         self.scan_history = ScanHistory()
-        self.logger = HFLogger(domain)
+        self.logger = HFLogger(f"output/{domain}")
 
         # Initialize scheduler
         self.resource_monitor = ResourceMonitor(update_interval=2.0)
@@ -212,30 +172,6 @@ class OrchestratorV2:
         """Handle shutdown signals gracefully"""
         logger.warning(f"Received signal {signum}, initiating graceful shutdown...")
         self._shutdown = True
-
-    def _load_profile_config(self) -> dict:
-        """Load profile configuration from YAML"""
-        profile_path = Path(f"config/profiles/{self.profile}.yaml")
-        if not profile_path.exists():
-            logger.warning(f"Profile config not found: {profile_path}. Using empty defaults.")
-            return {
-                'tool_selection': {},
-                'tool_overrides': {},
-                'scheduler': {}
-            }
-
-        try:
-            with open(profile_path) as f:
-                config = yaml.safe_load(f)
-            logger.info(f"Loaded profile configuration from {profile_path}")
-            return config
-        except Exception as e:
-            logger.error(f"Failed to load profile config: {e}")
-            return {
-                'tool_selection': {},
-                'tool_overrides': {},
-                'scheduler': {}
-            }
 
     def load_checkpoint(self) -> bool:
         """Load existing checkpoint if exists"""
@@ -260,7 +196,6 @@ class OrchestratorV2:
 
         data = {
             'domain': self.domain,
-            'profile': self.profile,
             'phase': self.current_phase,
             'completed_tools': self.completed_tools,
             'tags': self.tag_manager.tags,
@@ -286,7 +221,7 @@ class OrchestratorV2:
             if not self.tag_manager.has(if_tag):
                 return True, f"Tag '{if_tag}' not set"
 
-        # Check always flag
+        # Check enabled flag
         if tool_config.get('enabled', True) is False:
             return True, "Tool disabled in methodology"
 
@@ -301,14 +236,13 @@ class OrchestratorV2:
         tools = phase_config.get('tools') or phase_config.get('conditional_tools') or []
         input_files = phase_config.get('input_files', {})
 
-        # Filter tools based on conditional execution
+        # Build list of tools to run
         tools_to_run = []
         for tool_entry in tools:
             # Handle both dict and simple string formats
             if isinstance(tool_entry, dict):
-                tool_name = tool_entry.get('tool')
+                tool_name = tool_entry.get('tool') or tool_entry.get('name')
                 if not tool_name:
-                    # Phase 7 uses conditional_tools differently
                     continue
                 tool_config = tool_entry
             else:
@@ -322,18 +256,8 @@ class OrchestratorV2:
                     self.logger.tool_skipped(tool_name, reason)
                 continue
 
-            # Check profile-based tool enablement (tool_selection)
-            tool_selection = self.profile_config.get('tool_selection', {})
-            phase_selection = tool_selection.get(phase_name, {})
-            enabled_tools = phase_selection.get('enabled_tools', [])
-            if enabled_tools and tool_name not in enabled_tools:
-                logger.info(f"Skipping {tool_name}: not enabled in '{self.profile}' profile")
-                if tool_name in TOOL_REGISTRY:
-                    self.logger.tool_skipped(tool_name, f"Profile filter: {self.profile}")
-                continue
-
-            if tool_name not in TOOL_REGISTRY or TOOL_REGISTRY[tool_name] is None:
-                logger.warning(f"Tool {tool_name} not implemented, skipping")
+            if tool_name not in TOOL_REGISTRY:
+                logger.warning(f"Tool {tool_name} not in registry, skipping")
                 continue
 
             tools_to_run.append({
@@ -391,12 +315,12 @@ class OrchestratorV2:
                 if best_decision:
                     logger.debug(f"Waiting: {best_decision.reason}")
 
-                # Check for OOM or critical conditions
+                # Check for critical conditions
                 capacity = self.resource_monitor.get_capacity()
                 if capacity.pressure_level == 'critical':
                     logger.warning("System under critical pressure, pausing new tools...")
 
-                time.sleep(5)  # Check every 5 seconds
+                time.sleep(5)
 
         logger.info(f"Phase {phase_name} complete: {completed}/{total} tools executed")
 
@@ -405,22 +329,13 @@ class OrchestratorV2:
         start_time = time.time()
 
         try:
-            # Apply profile-specific parameter overrides (if any)
-            tool_overrides = self.profile_config.get('tool_overrides', {}).get(tool_name, {})
-            if tool_overrides:
-                # Merge into tool_config['config'] sub-dictionary
-                if 'config' not in tool_config:
-                    tool_config['config'] = {}
-                tool_config['config'].update(tool_overrides)
-                logger.info(f"Applied profile overrides for {tool_name}: {tool_overrides}")
-
             # Instantiate tool
             tool = tool_class()
 
             # Build resource estimate for scheduler
             estimate = self.tool_profiles.estimate_tool_resources(
                 tool_name,
-                tool_config.get('extra_args')  # TODO: parse into dict
+                tool_config.get('extra_args')
             )
             self.scheduler.register_tool_start(tool_name, estimate)
 
@@ -433,22 +348,18 @@ class OrchestratorV2:
                 params = sig.parameters
                 has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
                 if not has_var_keyword:
-                    # Determine accepted keyword names (excluding standard ones)
                     accepted = set(name for name, p in params.items()
                                    if p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD,
                                                 inspect.Parameter.KEYWORD_ONLY))
-                    # Remove standard arguments we will pass explicitly
                     standard_args = {'target', 'output_dir', 'tag_manager', 'config'}
                     accepted = accepted - standard_args
-                    # Keep only those input_files that are in accepted
                     filtered_input = {k: v for k, v in input_files.items() if k in accepted}
                 else:
                     filtered_input = input_files
             except (ValueError, TypeError):
-                # Fallback: use all input_files
                 filtered_input = input_files
 
-            # Run the tool (this is blocking)
+            # Run the tool (blocking)
             logger.info(f"Running {tool_name}...")
             result = tool.run(
                 target=self.domain,
@@ -463,9 +374,29 @@ class OrchestratorV2:
             self.logger.tool_complete(tool_name, result, elapsed)
 
             # Extract tags from tool output
-            tags = tool.extract_tags(result) if hasattr(tool, 'extract_tags') else {}
-            for tag, metadata in tags.items():
-                self.tag_manager.add(tag, metadata)
+            if hasattr(tool, 'extract_tags') and callable(tool.extract_tags):
+                tags = tool.extract_tags(result)
+                if tags:
+                    for tag, metadata in tags.items():
+                        self.tag_manager.add(tag, **metadata) if isinstance(metadata, dict) else self.tag_manager.add(tag)
+
+            # Also call emit_tags if present
+            if hasattr(tool, 'emit_tags') and callable(tool.emit_tags):
+                tool.emit_tags(result, self.tag_manager)
+
+            # Auto-emit any tags explicitly declared in the API methodology config
+            explicit_tags = tool_config.get('tags_emitted', [])
+            if isinstance(explicit_tags, list):
+                # Ensure we only emit tags if the tool succeeded and returned something
+                # We do a basic check here. If result is empty dict, we might not want to emit
+                found_something = True
+                if isinstance(result, dict):
+                    if result.get('count', 1) == 0 or not result.get('results', True):
+                        found_something = False
+                
+                if found_something:
+                    for t in explicit_tags:
+                        self.tag_manager.add(t, source='methodology_engine')
 
             # Record in history
             self.completed_tools.append({
@@ -484,6 +415,17 @@ class OrchestratorV2:
         except Exception as e:
             logger.error(f"Tool {tool_name} failed: {e}")
             self.logger.tool_error(tool_name, e)
+
+            # Record failure so we don't retry
+            self.completed_tools.append({
+                'tool': tool_name,
+                'phase': self.current_phase,
+                'start_time': start_time,
+                'elapsed_seconds': time.time() - start_time,
+                'status': 'failed',
+                'error': str(e)
+            })
+            self.save_checkpoint()
 
         finally:
             self.scheduler.register_tool_end(tool_name)
@@ -511,37 +453,43 @@ class OrchestratorV2:
         # Get phases from methodology
         phases = self.methodology.get('phases', {})
 
-        # PHASES 1-6: Normal execution
+        # Execute all phases
         for phase_name, phase_config in phases.items():
             if self._shutdown:
                 logger.warning("Shutdown requested, stopping")
                 break
 
-            # Skip if phase already completed (from checkpoint)
-            if any(ct['phase'] == phase_name for ct in self.completed_tools):
-                logger.info(f"Phase {phase_name} already completed, skipping")
-                continue
-
-            # PHASE 7 SPECIAL HANDLING
+            # PHASE 7 SPECIAL HANDLING — human decision point
             if phase_name == 'phase_7_vuln_scan':
                 logger.info("Phase 6 complete. Recon is done.")
-
-                # Show summary of discovered targets
                 self._display_recon_summary()
 
-                # Ask user if they want to continue with vulnerability scanning
-                response = input("\nContinue with vulnerability scanning (Phase 7)? [y/N]: ").strip().lower()
+                try:
+                    response = input("\nContinue with vulnerability scanning (Phase 7)? [y/N]: ").strip().lower()
+                except EOFError:
+                    response = 'n'
+
                 if response != 'y':
                     logger.info("Skipping Phase 7. Scan complete.")
                     break
-
-                # Let user select targets (if configured)
-                # TODO: Implement target selection interface
 
             self.run_phase(phase_name, phase_config)
 
             # Post-phase processing: generate declared output files
             self._process_phase_outputs(phase_name, phase_config)
+
+            # Save active tags for reporting
+            self.tag_manager.save_to_file(f"output/{self.domain}")
+
+            # Copy active_tags.json to root for report generator
+            import shutil
+            src = f"output/{self.domain}/processed/active_tags.json"
+            dst = f"output/{self.domain}/active_tags.json"
+            if os.path.exists(src):
+                shutil.copy(src, dst)
+
+            # Free memory between phases
+            gc.collect()
 
         # Scan complete
         elapsed = time.time() - self.scan_start_time
@@ -561,7 +509,7 @@ class OrchestratorV2:
                 summary = json.load(f)
 
             print("\n" + "="*60)
-            print("RECONNAISSANCE COMPLETE - DISCOVERED ASSETS")
+            print("RECONNAISSANCE COMPLETE — DISCOVERED ASSETS")
             print("="*60)
             print(f"Target: {self.domain}")
             print(f"Subdomains found: {summary.get('subdomain_count', 0)}")
@@ -569,7 +517,6 @@ class OrchestratorV2:
             print(f"Technologies: {', '.join(summary.get('tech_stack', [])[:5])}")
             print(f"Endpoints discovered: {summary.get('endpoint_count', 0)}")
             print(f"Parameters found: {summary.get('parameter_count', 0)}")
-            print(f"Admin panels: {summary.get('admin_panel_count', 0)}")
             print(f"Critical tags: {', '.join(summary.get('critical_tags', []))}")
             print("="*60)
             print("\nReview the output/ directory before proceeding to Phase 7.")
@@ -580,15 +527,16 @@ class OrchestratorV2:
         """Generate final scan summary"""
         summary = {
             'domain': self.domain,
-            'profile': self.profile,
             'start_time': self.scan_start_time,
             'end_time': time.time(),
             'total_duration_seconds': time.time() - self.scan_start_time,
-            'tools_completed': len(self.completed_tools),
+            'tools_completed': len([t for t in self.completed_tools if t.get('status') == 'completed']),
+            'tools_failed': len([t for t in self.completed_tools if t.get('status') == 'failed']),
             'final_tags': self.tag_manager.get_all(),
         }
 
         summary_path = Path(f"output/{self.domain}/scan_metadata.json")
+        summary_path.parent.mkdir(parents=True, exist_ok=True)
         with open(summary_path, 'w') as f:
             json.dump(summary, f, indent=2)
 
@@ -597,14 +545,6 @@ class OrchestratorV2:
     def _process_phase_outputs(self, phase_name: str, phase_config: dict):
         """
         Post-phase processing: generate declared output files by merging tool results.
-
-        The methodology YAML can declare output_files for a phase. After that phase
-        completes, this method generates those files by aggregating results from
-        the raw tool outputs.
-
-        Currently handles:
-          - subdomains_merged: merges subdomains from subfinder.txt, amass.txt, crtsh.json
-          - phase2_subdomains_from_secrets: extracts subdomains from gitleaks/trufflehog (future)
         """
         output_files = phase_config.get('output_files', {})
         if not output_files:
@@ -617,7 +557,6 @@ class OrchestratorV2:
         # Handle subdomains_merged (Phase 1)
         if 'subdomains_merged' in output_files:
             merged_path = processed_dir / output_files['subdomains_merged']
-            # Collect subdomains from various raw files
             subdomains = set()
 
             # subfinder.txt (one per line)
@@ -661,10 +600,9 @@ class OrchestratorV2:
                 with open(merged_path, 'w') as f:
                     for sub in sorted(subdomains):
                         f.write(sub + '\n')
-                logger.success(f"Merged {len(subdomains)} unique subdomains → {merged_path}")
+                logger.success(f"Merged {len(subdomains)} unique subdomains -> {merged_path}")
             else:
                 logger.warning("No subdomains found from Phase 1 tools")
-                # Create empty file to avoid downstream warnings
                 merged_path.write_text('')
 
 
@@ -676,8 +614,6 @@ def main():
     parser.add_argument("domain", help="Target domain")
     parser.add_argument("--methodology", default="config/default_methodology.yaml",
                        help="Path to methodology YAML")
-    parser.add_argument("--profile", default="professional", choices=['lite', 'medium', 'full', 'professional'],
-                       help="Resource profile (lite, medium, full, professional)")
     parser.add_argument("--no-checkpoint", action="store_true",
                        help="Disable checkpoint/resume")
     parser.add_argument("--checkpoint-file",
@@ -685,11 +621,9 @@ def main():
 
     args = parser.parse_args()
 
-    # Create orchestrator
     orch = OrchestratorV2(
         domain=args.domain,
         methodology_path=args.methodology,
-        profile=args.profile,
         checkpoint_file=None if args.no_checkpoint else (args.checkpoint_file or None),
         adaptive=True
     )
@@ -704,8 +638,6 @@ def main():
 
 
 if __name__ == "__main__":
-    # Set up logging
-    logger.remove()  # Remove default handler
+    logger.remove()
     logger.add(sys.stderr, level="INFO", format="<green>{time:HH:mm:ss}</green> | <level>{level}</level> | {message}")
-
     main()

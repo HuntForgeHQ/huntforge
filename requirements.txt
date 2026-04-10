@@ -9,5 +9,4 @@ psutil==5.9.8
 # HuntForge Dashboard
 Flask==3.0.3
 
-# AI Generation SDKs
-google-generativeai==0.5.0
+# AI — Ollama (local, no SDK needed — uses requests)

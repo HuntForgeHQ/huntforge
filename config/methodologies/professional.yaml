@@ -76,18 +76,6 @@ phases:
           sources: "certificate,dns,dnsdumpster,github,gitlab,virustotal"  # 6 best sources only
           max_time: 180  # 3 minute timeout
 
-      amass:
-        enabled: true
-        binary: "amass"
-        weight: medium
-        timeout: 300  # 5 minutes max
-        output_file: "raw/amass.txt"
-        default_flags: "enum -passive -d {domain} -o {output_file}"
-        extra_args: ""
-        config:
-          max_dns: 5000  # Limit queries
-          timeout: 5m
-
       crtsh:
         enabled: true
         binary: null

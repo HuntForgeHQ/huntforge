@@ -12,8 +12,16 @@ services:
     working_dir: /huntforge
     command: tail -f /dev/null
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 128M
     networks:
       - huntforge
+
+
 
 networks:
   huntforge:

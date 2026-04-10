@@ -82,3 +82,18 @@ class ScopeEnforcer:
                     return True, f"Matches in-scope rule: {in_pattern}", program_name
                     
         return False, "Domain does not match any known program scope.", "Unknown Program"
+
+    def approve_manual(self, domain: str, confirm: str) -> bool:
+        """Manually approve a domain during runtime."""
+        if confirm.strip() == domain:
+            # Optionally add to scope.json here for persistence
+            if "Manual Approvals" not in self.scopes:
+                self.scopes["Manual Approvals"] = {"in_scope": [], "out_of_scope": []}
+            if domain not in self.scopes["Manual Approvals"]["in_scope"]:
+                self.scopes["Manual Approvals"]["in_scope"].append(domain)
+                
+                with open(self.scope_file, 'w') as f:
+                    json.dump({"programs": self.scopes}, f, indent=4)
+                    
+            return True
+        return False

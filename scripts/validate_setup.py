@@ -61,7 +61,7 @@ def main():
     print("[3] HuntForge core modules")
     try:
         from core.tag_manager import TagManager
-        from core.orchestrator import Orchestrator
+        from core.orchestrator_v2 import OrchestratorV2
         from core.resource_aware_scheduler import AdaptiveScheduler
         check("Core modules importable", True)
     except ImportError as e:
@@ -91,7 +91,7 @@ def main():
     # 5. Tools inside container (only if Docker is running)
     if docker_ok:
         print("[5] Security tools (inside container)")
-        tools = ['subfinder', 'httpx', 'dnsx', 'nuclei', 'whatweb']
+        tools = ['subfinder', 'httpx', 'nuclei', 'whatweb', 'katana']
         for tool in tools:
             try:
                 result = subprocess.run(
@@ -101,7 +101,7 @@ def main():
                 )
                 installed = result.returncode == 0
                 all_ok &= check(f"{tool}", installed,
-                               f"Install via: docker exec huntforge-kali python3 scripts/installer.py --profile lite")
+                               f"Install via: docker exec huntforge-kali python3 scripts/installer.py --profile professional")
             except Exception:
                 all_ok = False
         print()
@@ -121,11 +121,11 @@ def main():
     else:
         check("config/default_methodology.yaml", True)
 
-    if not Path("config/profiles/lite.yaml").exists():
-        check("config/profiles/lite.yaml", False, "Missing resource profile")
+    if not Path("config/methodologies/professional.yaml").exists():
+        check("config/methodologies/professional.yaml", False, "Missing professional methodology")
         config_ok = False
     else:
-        check("config/profiles/lite.yaml", True)
+        check("config/methodologies/professional.yaml", True)
 
     all_ok &= config_ok
     print()
@@ -139,7 +139,7 @@ def main():
         print(f"  RAM: {mem.total/1024**3:.1f} GB total, {mem.available/1024**3:.1f} GB available")
         print(f"  CPU: {cpu_count} cores")
         if mem.total < 4 * 1024**3:
-            print("  \033[93m[WARN] Less than 4GB RAM. Use --profile lite\033[0m")
+            print("  \033[93m[WARN] Less than 4GB RAM. Some heavy tools may be throttled.\033[0m")
         else:
             print("  \033[92m[OK] Sufficient RAM for bug bounty work\033[0m")
     except ImportError:
@@ -170,7 +170,7 @@ def main():
         print("\033[92m[SUCCESS] Setup is valid! Ready to scan.\033[0m")
         print("\nNext steps:")
         print("  1. Edit ~/.huntforge/scope.json with your targets")
-        print("  2. Run: python3 huntforge.py scan testaspnet.vulnweb.com --profile lite")
+        print("  2. Run: python3 huntforge.py scan your-target.com")
     else:
         print("\033[91m[FAILED] Some checks failed. Fix issues above.\033[0m")
         print("\nQuick fix:")

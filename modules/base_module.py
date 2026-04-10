@@ -120,6 +120,15 @@ class BaseModule:
         """
         return 100
 
+    def extract_tags(self, result: dict) -> dict:
+        """
+        Extract tags from tool result. Called by orchestrator after run().
+
+        Default: returns empty dict. Override in subclass if the tool
+        needs to set tags via return value instead of emit_tags().
+        """
+        return {}
+
     # ── Internal Core Methods ─────────────────────────────────────
 
     def docker_command(self, target: str, output_file: str) -> list:

@@ -1,69 +1,101 @@
 # ai/methodology_engine.py
-# Author         : Member 2
-# Responsibility : Generates methodology using Ollama.
+# Author         : HuntForge Agent
+# Responsibility : Generates methodology using OpenRouter API.
 # ------------------------------------------------------------
 
-import requests
-import json
-import yaml
 import os
+import yaml
 from loguru import logger
 
+from ai.openrouter_helper import OpenRouterHelper
+
+
+SYSTEM_PROMPT = """\
+You are HuntForge AI, an expert bug bounty methodology generator.
+
+RULES:
+1. Your output MUST be ONLY valid YAML. No markdown fences.
+2. You MUST use exactly this structure (preserve the numerical phase ordering in keys so it executes in order):
+
+phases:
+  phase_1_passive:
+    label: "Passive Recon"
+    tools:
+      - tool: subfinder
+        tags_emitted:
+          - has_subdomains
+  phase_2_active:
+    label: "Active Recon"
+    conditional_tools:
+      - tool: httpx
+        if_tag: has_subdomains
+        tags_emitted:
+          - has_live_hosts
+
+3. The "tools" or "conditional_tools" list MUST contain flat objects with a "tool" key (the binary name).
+4. Do NOT nest "tools" inside conditional_tools objects.
+5. Use ONLY these HuntForge tool names: subfinder, crtsh, httpx, naabu, whatweb, katana, gau, paramspider, ffuf, nuclei, subjack, dalfox, sqlmap.
+"""
+
+
 class MethodologyEngine:
-    def __init__(self, ollama_host: str = "http://localhost:11434", model: str = "llama3"):
-        self.ollama_host = ollama_host
-        self.model = model
+    def __init__(self, model: str = None):
+        self.helper = OpenRouterHelper(model=model)
 
     def generate(self, prompt: str) -> dict:
         """
-        Calls Ollama to generate a HuntForge methodology YAML and parses it.
+        Calls OpenRouter to generate a HuntForge methodology YAML and parses it.
         Falls back to default_methodology.yaml on failure.
         """
-        logger.info(f"Asking Ollama ({self.model}) to generate methodology for: {prompt}")
-        
-        system_prompt = """
-You are HuntForge AI, an expert bug bounty methodology generator.
-Generate a valid YAML methodology based on the user's prompt.
-Your output MUST be ONLY valid YAML. No markdown formatting, no explanations.
-"""
-        
-        try:
-            response = requests.post(
-                f"{self.ollama_host}/api/generate",
-                json={
-                    "model": self.model,
-                    "system": system_prompt,
-                    "prompt": prompt,
-                    "stream": False
-                },
-                timeout=60
+        logger.info(f"Asking OpenRouter ({self.helper.model}) to generate methodology for: {prompt}")
+
+        # Check if OpenRouter is reachable (API key is set)
+        if not self.helper.is_available():
+            logger.error(
+                "OpenRouter API key is not set. Make sure to set OPENROUTER_API_KEY. "
+                "Falling back to default methodology."
             )
-            response.raise_for_status()
-            
-            output_text = response.json().get('response', '')
-            
-            # Clean up markdown around YAML if the LLM leaked it
-            if "```yaml" in output_text:
-                output_text = output_text.split("```yaml")[1].split("```")[0]
-            elif "```" in output_text:
-                output_text = output_text.split("```")[1].split("```")[0]
-                
+            return self._load_default()
+
+        try:
+            output_text = self.helper.generate(
+                prompt=f"Generate a HuntForge reconnaissance methodology for:\n{prompt}",
+                system=SYSTEM_PROMPT,
+            )
+
+            # ── Strip markdown fences if the LLM leaked them ──
+            output_text = self._strip_markdown(output_text)
+
             methodology = yaml.safe_load(output_text)
-            
+
             # Basic validation
             if not isinstance(methodology, dict) or 'phases' not in methodology:
                 raise ValueError("Generated YAML missing 'phases' root key")
-                
+
+            logger.success("Methodology generated successfully via OpenRouter.")
             return methodology
-            
+
         except Exception as e:
-            logger.error(f"Failed to generate methodology via Ollama: {e}")
+            logger.error(f"Failed to generate methodology via OpenRouter: {e}")
             logger.warning("Falling back to default methodology.")
             return self._load_default()
 
-    def _load_default(self) -> dict:
+    # ── Private helpers ──────────────────────────────────────────
+
+    @staticmethod
+    def _strip_markdown(text: str) -> str:
+        """Remove ```yaml ... ``` fences that local models sometimes add."""
+        if "```yaml" in text:
+            text = text.split("```yaml", 1)[1].split("```", 1)[0]
+        elif "```" in text:
+            text = text.split("```", 1)[1].split("```", 1)[0]
+        return text.strip()
+
+    @staticmethod
+    def _load_default() -> dict:
         with open(os.path.join('config', 'default_methodology.yaml'), 'r') as f:
             return yaml.safe_load(f)
+
 
 # Wrapper function for the CLI
 def generate_methodology(prompt: str) -> dict:

@@ -29,8 +29,8 @@ tool_profiles:
   amass:
     phase: "phase_1_passive_recon"
     phase_weight: "heavy"  # Actually heavy, but typically runs in Phase 1
-    base_memory_mb: 600
-    base_cpu_cores: 1.5
+    base_memory_mb: 400
+    base_cpu_cores: 1.0
     scalable_params:
       threads:
         value: 15
@@ -355,8 +355,8 @@ tool_profiles:
   katana:
     phase: "phase_5_enumeration"
     phase_weight: "heavy"
-    base_memory_mb: 400
-    base_cpu_cores: 1.5
+    base_memory_mb: 100
+    base_cpu_cores: 0.5
     scalable_params:
       depth:
         value: 3
@@ -395,8 +395,8 @@ tool_profiles:
   gospider:
     phase: "phase_5_enumeration"
     phase_weight: "heavy"
-    base_memory_mb: 500
-    base_cpu_cores: 1.5
+    base_memory_mb: 300
+    base_cpu_cores: 1.0
     scalable_params:
       concurrent:
         value: 10
@@ -443,8 +443,8 @@ tool_profiles:
   arjun:
     phase: "phase_5_enumeration"
     phase_weight: "heavy"
-    base_memory_mb: 600
-    base_cpu_cores: 1.0
+    base_memory_mb: 300
+    base_cpu_cores: 0.8
     scalable_params:
       threads:
         value: 10
@@ -459,9 +459,9 @@ tool_profiles:
   # -------------------------------------------------
   ffuf:
     phase: "phase_6_content_discovery"
-    phase_weight: "very_heavy"
-    base_memory_mb: 800
-    base_cpu_cores: 2.5
+    phase_weight: "heavy"
+    base_memory_mb: 200
+    base_cpu_cores: 1.0
     scalable_params:
       threads:
         value: 50
@@ -500,8 +500,8 @@ tool_profiles:
   feroxbuster:
     phase: "phase_6_content_discovery"
     phase_weight: "heavy"
-    base_memory_mb: 500
-    base_cpu_cores: 2.0
+    base_memory_mb: 300
+    base_cpu_cores: 1.0
     scalable_params:
       threads:
         value: 50
@@ -520,9 +520,9 @@ tool_profiles:
 
   wpscan:
     phase: "phase_6_content_discovery"
-    phase_weight: "heavy"
-    base_memory_mb: 400
-    base_cpu_cores: 1.0
+    phase_weight: "medium"
+    base_memory_mb: 150
+    base_cpu_cores: 0.5
     scalable_params:
       enumerate:
         value: "ap,at,tt,cb,dbe,u,m"
@@ -554,8 +554,8 @@ tool_profiles:
   nuclei:
     phase: "phase_7_vuln_scan"
     phase_weight: "very_heavy"
-    base_memory_mb: 800
-    base_cpu_cores: 2.0
+    base_memory_mb: 500
+    base_cpu_cores: 1.5
     scalable_params:
       concurrency:
         value: 25
@@ -654,8 +654,8 @@ tool_profiles:
   sqlmap:
     phase: "phase_7_vuln_scan"
     phase_weight: "very_heavy"
-    base_memory_mb: 1200
-    base_cpu_cores: 2.5
+    base_memory_mb: 600
+    base_cpu_cores: 1.5
     scalable_params:
       threads:
         value: 4
@@ -719,50 +719,50 @@ tool_profiles:
 phase_weights:
   phase_1_passive_recon:
     weight: "light"
-    max_concurrent_light_hw: 12      # On high-end (16GB+)
-    max_concurrent_medium_hw: 8      # On medium (8GB)
-    max_concurrent_low_hw: 5         # On low-end (4GB)
+    max_concurrent_light_hw: 6       # On high-end (16GB+)
+    max_concurrent_medium_hw: 4      # On medium (8GB)
+    max_concurrent_low_hw: 3         # On low-end (4GB)
     scheduler_strategy: "high_concurrency"  # Start all that fit
 
   phase_2_secrets_osint:
     weight: "light"
-    max_concurrent_light_hw: 10
-    max_concurrent_medium_hw: 6
-    max_concurrent_low_hw: 4
+    max_concurrent_light_hw: 4
+    max_concurrent_medium_hw: 3
+    max_concurrent_low_hw: 2
     scheduler_strategy: "high_concurrency"
 
   phase_3_asset_discovery:
     weight: "medium"
-    max_concurrent_light_hw: 8
-    max_concurrent_medium_hw: 5
-    max_concurrent_low_hw: 3
+    max_concurrent_light_hw: 4
+    max_concurrent_medium_hw: 2
+    max_concurrent_low_hw: 1
     scheduler_strategy: "adaptive_with_throttle"
 
   phase_4_surface_intelligence:
     weight: "medium"
-    max_concurrent_light_hw: 6
-    max_concurrent_medium_hw: 4
-    max_concurrent_low_hw: 2
+    max_concurrent_light_hw: 3
+    max_concurrent_medium_hw: 2
+    max_concurrent_low_hw: 1
     scheduler_strategy: "adaptive_with_throttle"
 
   phase_5_enumeration:
     weight: "heavy"
-    max_concurrent_light_hw: 4
-    max_concurrent_medium_hw: 3
-    max_concurrent_low_hw: 2
+    max_concurrent_light_hw: 2
+    max_concurrent_medium_hw: 1
+    max_concurrent_low_hw: 1
     scheduler_strategy: "adaptive_sequential"
 
   phase_6_content_discovery:
     weight: "very_heavy"
-    max_concurrent_light_hw: 2
-    max_concurrent_medium_hw: 2
+    max_concurrent_light_hw: 1
+    max_concurrent_medium_hw: 1
     max_concurrent_low_hw: 1
     scheduler_strategy: "adaptive_sequential"
 
   phase_7_vuln_scan:
     weight: "very_heavy"
-    max_concurrent_light_hw: 2
-    max_concurrent_medium_hw: 2
+    max_concurrent_light_hw: 1
+    max_concurrent_medium_hw: 1
     max_concurrent_low_hw: 1
     scheduler_strategy: "adaptive_sequential_with_params_scaling"
 

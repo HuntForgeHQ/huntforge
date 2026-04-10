@@ -48,8 +48,11 @@ class SystemCapacity:
         # Start with available RAM
         effective = self.available_ram_gb
 
-        # Apply safety margin (keep 20% for OS)
-        effective *= 0.8
+        # Apply safety margin (keep 30% for OS on small systems, 20% on large)
+        if self.total_ram_gb < 8:
+            effective *= 0.7  # 30% margin on small systems
+        else:
+            effective *= 0.8  # 20% margin on large systems
 
         # If swap is heavily used, be more conservative
         if self.swap_used_percent > 50:
@@ -113,20 +116,29 @@ class ToolProfiles:
         self._load()
 
     def _load(self):
-        """Load profiles from YAML"""
+        """Load profiles from YAML, with graceful fallback to defaults"""
         try:
-            with open(self.profiles_path) as f:
-                data = yaml.safe_load(f)
+            if self.profiles_path.exists():
+                with open(self.profiles_path) as f:
+                    data = yaml.safe_load(f)
 
-            self.tool_profiles = data.get('tool_profiles', {})
-            self.phase_weights = data.get('phase_weights', {})
-            self.phase_limits = self.phase_weights  # alias
-            self.resource_thresholds = data.get('resource_thresholds', {})
-
-            logger.info(f"Loaded {len(self.tool_profiles)} tool profiles")
+                self.tool_profiles = data.get('tool_profiles', {})
+                self.phase_weights = data.get('phase_weights', {})
+                self.phase_limits = self.phase_weights
+                self.resource_thresholds = data.get('resource_thresholds', {})
+                logger.info(f"Loaded {len(self.tool_profiles)} tool profiles from {self.profiles_path}")
+            else:
+                logger.warning(f"Tool profiles not found at {self.profiles_path}, using defaults")
+                self.tool_profiles = {}
+                self.phase_weights = {}
+                self.phase_limits = {}
+                self.resource_thresholds = {}
         except Exception as e:
-            logger.error(f"Failed to load tool profiles: {e}")
-            raise
+            logger.error(f"Failed to load tool profiles: {e}. Using defaults.")
+            self.tool_profiles = {}
+            self.phase_weights = {}
+            self.phase_limits = {}
+            self.resource_thresholds = {}
 
     def get_tool_profile(self, tool_name: str) -> dict:
         """Get resource profile for a tool"""
