@@ -35,6 +35,8 @@ Instead, HuntForge employs **Artificial Intelligence (via OpenRouter integration
 
 - **Shift-Left WAF Detection**: Detects Akamai/Cloudflare inside Httpx parsing, instantly flagging the framework to decelerate fuzzers.
 - **Dynamic Command Interception**: Core module wrappers dynamically append `-rl` loops, timeout overrides, and browser heuristics if targets become hostile.
+- **Interactive Local Dashboard**: Real-time visualization of scanning timelines via a lightweight, decoupled Flask + SQLite observability UI (`dashboard/app.py`).
+- **Automated AI Penetration Reports**: Instantly aggregates raw JSON tool artifacts into professional Executive Markdown Reports via OpenRouter's API synthesis.
 - **OpenRouter Fallbacks**: Connects directly to `gemini-2.5-flash` natively through OpenRouter without requiring local LLM weights chewing up GPU resources.
 - **Infinite Run Extensions**: `SmartTimeoutV2` watches subprocess resource/IO hooks; if Nuclei or Dalfox are visibly working and making progress, they are intelligently extended rather than forcefully terminated.
 - **State Checkpointing**: System crash? VPS reboot? Run `huntforge.py resume target.com`. It picks up exactly where it died.
