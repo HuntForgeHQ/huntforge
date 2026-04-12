@@ -256,7 +256,7 @@ class HuntForgeInstaller:
             'linkfinder': ('pip', 'linkfinder'),
 
             # Phase 3 - Discovery
-            'httpx': ('apt', 'httpx-toolkit'),
+            'httpx': ('go', 'github.com/projectdiscovery/httpx/cmd/httpx@latest'),
             'dnsx': ('apt', 'dnsx'),
             'naabu': ('apt', 'naabu'),
             'puredns': ('go', 'github.com/d3mondev/puredns/cmd/puredns@latest'),
