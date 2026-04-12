@@ -272,17 +272,6 @@ phases:
           aggression: 1
           threads: 25
 
-      - tool: wappalyzer_cli
-        always: true
-        binary: "wappalyzer"
-        weight: light
-        timeout: 600
-        output_file: "raw/wappalyzer.json"
-        default_flags: "-hosts {live_hosts_txt} -json {output_file}"
-        extra_args: ""
-        config:
-          timeout: 10
-
       # Skipped: nmap (too slow), shodan (API), censys (API)
 
   # ============================================================================
