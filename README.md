@@ -6,7 +6,7 @@
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue)](https://www.docker.com/)
-[![Local AI](https://img.shields.io/badge/AI_Powered-Ollama-a855f7.svg)](https://ollama.com/)
+[![OpenRouter](https://img.shields.io/badge/AI_Powered-OpenRouter-a855f7.svg)](https://openrouter.ai/)
 
 **16 carefully curated tools. Complete Autonomous WAF Evasion. Dynamic Tag-Flow. Zero noise.**  
 HuntForge bridges the gap between chaotic unguided enumeration scripts and precise, red-team exploitation logic.
@@ -21,7 +21,7 @@ HuntForge bridges the gap between chaotic unguided enumeration scripts and preci
 
 HuntForge is a strict, containerized vulnerability discovery orchestrator built for the modern Bug Bounty landscape. It solves the "Kitchen Sink" problem by avoiding blind `cat | tool_a | tool_b` bash scripts. 
 
-Instead, HuntForge employs **Artificial Intelligence (via local Ollama integration)** to construct dynamic, surgical methodologies based on natural language objectives, and executes them via an **Adaptive Resource Scheduler** that continuously monitors your hardware limits.
+Instead, HuntForge employs **Artificial Intelligence (via OpenRouter integration)** to construct dynamic, surgical methodologies based on natural language objectives, and executes them via an **Adaptive Resource Scheduler** that continuously monitors your hardware limits.
 
 ### The HuntForge Philosophy
 1. **Quality over Quantity**: We stripped out legacy tools (Nikto, Dirb, older wrappers). We employ exactly 16 heavily maintained, modern binaries (ProjectDiscovery, Ffuf, Sqlmap, Dalfox, etc.).
@@ -35,7 +35,7 @@ Instead, HuntForge employs **Artificial Intelligence (via local Ollama integrati
 
 - **Shift-Left WAF Detection**: Detects Akamai/Cloudflare inside Httpx parsing, instantly flagging the framework to decelerate fuzzers.
 - **Dynamic Command Interception**: Core module wrappers dynamically append `-rl` loops, timeout overrides, and browser heuristics if targets become hostile.
-- **Total Local AI Integration**: Seamless integration with local Ollama (`llama3`, `mistral`) for building on-the-fly ephemeral methodologies and synthesizing post-scan markdown reports—**zero API cost and full data privacy.**
+- **OpenRouter Fallbacks**: Connects directly to `gemini-2.5-flash` natively through OpenRouter without requiring local LLM weights chewing up GPU resources.
 - **Infinite Run Extensions**: `SmartTimeoutV2` watches subprocess resource/IO hooks; if Nuclei or Dalfox are visibly working and making progress, they are intelligently extended rather than forcefully terminated.
 - **State Checkpointing**: System crash? VPS reboot? Run `huntforge.py resume target.com`. It picks up exactly where it died.
 
@@ -56,9 +56,11 @@ flowchart LR
     classDef external fill:#b91c1c,stroke:#f87171,stroke-width:2px,color:#fff,rx:15,ry:15
 
     %% Nodes
-    A["💻 CLI Input"]:::control --> B{"🧠 Local Ollama\nMethodology Engine"}:::ai
+    A["💻 CLI Input"]:::control --> B{"🧠 AI Methodology Engine"}:::ai
     B --> C["⚙️ OrchestratorV2"]:::system
+    B -. "gemini-2.5-flash" .-> OR["☁️ OpenRouter API"]:::ai
     C --> |Post-Recon| Rep["📝 AI Report Generator"]:::ai
+    Rep -.-> OR
 
     subgraph DOCKER ["🛡️ Isolated Kali Docker Environment"]
         direction TB
@@ -113,14 +115,15 @@ graph TD
 ### 1. Prerequisites
 - Docker + Docker Compose V2
 - `python 3.9+` (on host)
-- Local inference server: Ollama (Optional but highly recommended for AI features)
 - Minimum Hardware: **1GB RAM, 10GB Storage** *(Adaptive Scheduler will operate flawlessly within a tiny VPS).*
 
 ### 2. Environment Configuration
-Create a `.env` file at the root of the project to customize API keys for Subfinder, Github, etc.
+Create a `.env` file at the root of the project to configure the OpenRouter AI and other API keys:
 ```env
-# Optional: Setup Ollama if running on a remote cluster
-OLLAMA_HOST="http://localhost:11434"
+OPENROUTER_API_KEY="sk-or-v1-..."
+OPENROUTER_MODEL="google/gemini-2.5-flash"
+OPENROUTER_API_URL="https://openrouter.ai/api/v1/chat/completions"
+# Add standard API keys for Shodan, GitHub, etc., here.
 ```
 
 ### 3. Deployment
@@ -146,7 +149,7 @@ python3 huntforge.py scan target.com --methodology config/methodologies/professi
 ```
 
 ### AI-Generated Ephemeral Scans
-Tell Ollama precisely what you are hunting for. The AI will write a disposable YAML file matching your needs and immediately execute it.
+Tell OpenRouter precisely what you are hunting for. The AI will write a disposable YAML file matching your needs and immediately execute it.
 ```bash
 # 1. Ask AI to write a strict plan
 python3 huntforge.py ai "focus only on finding heavy PII exposure and S3 misconfigurations"
@@ -186,7 +189,7 @@ However, **HuntForge is a deeply opinionated framework designed for absolute noi
 
 **Acceptable PRs include:**
 - ✅ Fixing/Enhancing syntax anomalies in the `ResourceAwareScheduler` or `SmartTimeoutV2` logic.
-- ✅ Expanding AI Prompts for Ollama syntax and context.
+- ✅ Expanding AI Prompts for OpenRouter syntax and context.
 - ✅ Expanding module `emit_tags` logic to extract richer metadata (e.g., detecting new AWS/Azure headers for `has_waf`).
 - ✅ Adding new `methodologies/*.yaml` templates for specific vulnerability vectors.
 

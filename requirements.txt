@@ -9,4 +9,4 @@ psutil==5.9.8
 # HuntForge Dashboard
 Flask==3.0.3
 
-# AI — Ollama (local, no SDK needed — uses requests)
+# AI — OpenRouter API (uses requests)
