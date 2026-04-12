@@ -76,6 +76,33 @@ class DockerRunner:
 
         return result.stdout
 
+    def exec_smart(self, command: list, timeout: int = 300, output_file: str = None) -> str:
+        """
+        Execute a command inside the docker container with smart timeout.
+        
+        Instead of killing on timeout, checks if output file has grown.
+        If output exists → extends timeout. If no output → kills process.
+        """
+        from core.smart_timeout_v2 import SmartTimeoutV2
+        
+        if not self.is_container_running():
+            raise DockerNotRunningError(
+                f"Docker container '{self.container_name}' is not running. "
+                f"Start it with: docker-compose up -d"
+            )
+        
+        docker_cmd = ['docker', 'exec', self.container_name] + command
+        tool_binary = command[0]
+        
+        runner = SmartTimeoutV2(
+            command=docker_cmd,
+            timeout=timeout,
+            output_file=output_file,
+            tool_name=tool_binary,
+            is_docker=True,
+        )
+        return runner.run()
+
     def exec_raw(self, command: list, timeout: int = 300) -> subprocess.CompletedProcess:
         """
         Execute a shell command inside the docker container and return the full 

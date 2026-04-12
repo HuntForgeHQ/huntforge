@@ -20,7 +20,7 @@ class GitleaksModule(BaseModule):
         # We must intercept it by calling docker_runner directly, or since BaseModule._run_subprocess 
         # raises ToolExecutionError, we can subclass or just catch it.
         try:
-            self._run_subprocess(self.build_command(target, container_out))
+            self._run_subprocess(self.build_command(target, container_out), output_file=host_out)
         except Exception as e:
             # gitleaks exit code 1 = leaks present
             if 'exited with code 1' not in str(e):

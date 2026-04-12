@@ -30,7 +30,7 @@ class NaabuModule(BaseModule):
         if self._cfg('top_ports'):
             cmd += ['-top-ports', str(self._cfg('top_ports'))]
 
-        self._run_subprocess(cmd)
+        self._run_subprocess(cmd, output_file=host_output_file)
 
         try:
             content = self._read_output_file(host_output_file)

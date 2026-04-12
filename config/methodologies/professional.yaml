@@ -234,6 +234,7 @@ phases:
 
     input_files:
       live_hosts: "processed/live_hosts.json"
+      live_hosts_txt: "processed/live_hosts.txt"
 
     output_files:
       tech_stack:    "tech_stack.json"
@@ -263,7 +264,7 @@ phases:
         always: true
         binary: "whatweb"
         weight: light
-        timeout: 180
+        timeout: 600
         output_file: "raw/whatweb.json"
         default_flags: "-i {input_file} --log-json={output_file} -q"
         extra_args: ""
@@ -275,7 +276,7 @@ phases:
         always: true
         binary: "wappalyzer"
         weight: light
-        timeout: 180
+        timeout: 600
         output_file: "raw/wappalyzer.json"
         default_flags: "-hosts {live_hosts_txt} -json {output_file}"
         extra_args: ""
@@ -300,7 +301,7 @@ phases:
 
     input_files:
       live_hosts: "processed/live_hosts.json"
-      tech_stack: "processed/tech_stack.json"
+      live_hosts_txt: "processed/live_hosts.txt"
 
     output_files:
       all_urls:       "all_urls.txt"
@@ -335,7 +336,7 @@ phases:
         always: true
         binary: "gau"
         weight: light
-        timeout: 300
+        timeout: 1200
         output_file: "raw/gau.txt"
         default_flags: "{domain} --o {output_file} --threads 5 --blacklist png,jpg,gif,svg,ico,css"
         extra_args: ""
@@ -404,6 +405,7 @@ phases:
 
     input_files:
       live_hosts: "processed/live_hosts.json"
+      live_hosts_txt: "processed/live_hosts.txt"
       all_urls: "processed/all_urls.txt"
 
     output_files:
@@ -472,7 +474,8 @@ phases:
       all_urls: "processed/all_urls.txt"
       parameters: "processed/parameters.json"
       live_hosts: "processed/live_hosts.json"
-      interesting_paths: "processed/interesting_paths.txt"
+      live_hosts_txt: "processed/live_hosts.txt"
+      subdomains_file: "processed/all_subdomains.txt"
 
     output_files:
       vulnerabilities: "vulnerabilities.json"

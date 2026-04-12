@@ -53,7 +53,7 @@ class SubfinderModule(BaseModule):
 
         # ── Execution ──────────────────────────────────────────────
         command = self.build_command(target, container_output_file)
-        self._run_subprocess(command)
+        self._run_subprocess(command, output_file=host_output_file)
 
         # ── Parsing ────────────────────────────────────────────────
         try:

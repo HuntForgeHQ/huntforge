@@ -37,7 +37,7 @@ class HttpxModule(BaseModule):
         if self._cfg('ports'):
             command += ['-p', self._cfg('ports')]
             
-        self._run_subprocess(command)
+        self._run_subprocess(command, output_file=host_output_file)
 
         try:
             content = self._read_output_file(host_output_file)
@@ -61,11 +61,23 @@ class HttpxModule(BaseModule):
         urls = [r.get('url') for r in result['results'] if r.get('url')]
         tag_manager.add('has_live_web', confidence='high', evidence=urls[:5], source='httpx')
         
-        # Detect tech
+        # Detect tech and WAF
+        waf_signatures = ['akamai', 'cloudflare', 'imperva', 'incapsula', 'sucuri', 'aws', 'cloudfront', 'fastly']
         for r in result['results']:
             tech = r.get('tech', [])
-            if any('wordpress' in str(t).lower() for t in tech):
-                tag_manager.add('has_wordpress', confidence='high', source='httpx')
+            webserver = str(r.get('webserver', '')).lower()
+            
+            for t in tech:
+                t_low = str(t).lower()
+                if 'wordpress' in t_low:
+                    tag_manager.add('has_wordpress', confidence='high', source='httpx')
+                for waf in waf_signatures:
+                    if waf in t_low:
+                        tag_manager.add('has_waf', confidence='high', source='httpx', evidence=[waf])
+            
+            for waf in waf_signatures:
+                if waf in webserver:
+                    tag_manager.add('has_waf', confidence='high', source='httpx', evidence=[waf])
 
     def estimated_requests(self) -> int:
         return 500

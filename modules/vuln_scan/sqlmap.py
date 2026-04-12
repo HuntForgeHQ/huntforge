@@ -54,7 +54,7 @@ class SQLMapModule(BaseModule):
                 pass
 
         command = self.build_command(target, container_output_file, container_params_file)
-        self._run_subprocess(command)
+        self._run_subprocess(command, output_file=host_output_file)
 
         try:
             content = self._read_output_file(host_output_file)

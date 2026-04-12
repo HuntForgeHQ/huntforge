@@ -14,7 +14,7 @@ class ArjunModule(BaseModule):
         container_out = host_out.replace('\\', '/')
         os.makedirs(os.path.dirname(host_out), exist_ok=True)
         
-        self._run_subprocess(self.build_command(target, container_out))
+        self._run_subprocess(self.build_command(target, container_out), output_file=host_out)
         
         try:
             data = json.loads(self._read_output_file(host_out))

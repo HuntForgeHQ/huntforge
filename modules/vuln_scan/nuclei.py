@@ -39,7 +39,7 @@ class NucleiModule(BaseModule):
         else:
             command = self.build_command(target, container_output_file)
             
-        self._run_subprocess(command)
+        self._run_subprocess(command, output_file=host_output_file)
 
         try:
             content = self._read_output_file(host_output_file)
@@ -60,8 +60,12 @@ class NucleiModule(BaseModule):
         if result['count'] > 0:
             tag_manager.add('has_vulnerabilities', confidence='high', source='nuclei')
             
-            severities = [r.get('info', {}).get('severity') for r in result['results']]
-            if 'critical' in severities or 'high' in severities:
+            severities = [
+                r.get('info', {}).get('severity') 
+                for r in result['results'] 
+                if isinstance(r, dict)
+            ]
+            if any(s in ['critical', 'high'] for s in severities):
                 tag_manager.add('has_critical_vulns', confidence='high', source='nuclei')
 
     def estimated_requests(self) -> int:

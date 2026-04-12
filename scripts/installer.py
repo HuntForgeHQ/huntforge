@@ -289,7 +289,7 @@ class HuntForgeInstaller:
 
             # Phase 7 - Vuln Scan
             'nuclei': ('apt', 'nuclei'),
-            'subjack': ('go', 'github.com/haccer/subjack/cmd/subjack@latest'),
+            'subjack': ('go', 'github.com/haccer/subjack@latest'),
             'nikto': ('apt', 'nikto'),
             'dalfox': ('go', 'github.com/hahwul/dalfox/v2@latest'),
             'sqlmap': ('apt', 'sqlmap'),

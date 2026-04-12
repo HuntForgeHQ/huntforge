@@ -7,7 +7,7 @@ class WhatWebModule(BaseModule):
     def build_command(self, target: str, container_out: str) -> list:
         return ['whatweb', target, '--log-json', container_out]
 
-    def run(self, target: str, output_dir: str, tag_manager, config: dict = None) -> dict:
+    def run(self, target: str, output_dir: str, tag_manager, config: dict = None, **kwargs) -> dict:
         self.config = config or {}
 
         host_output_file = os.path.join(output_dir, 'raw', 'whatweb.json')
@@ -35,12 +35,17 @@ class WhatWebModule(BaseModule):
                 urls = []
 
             if urls:
+                # Limit to top 20 hosts to avoid timeout on large scopes
+                max_hosts = int(self._cfg('max_hosts', 20))
+                if len(urls) > max_hosts:
+                    urls = urls[:max_hosts]
+
                 # Write URLs to a plain text file for whatweb input
                 urls_txt_path = os.path.join(output_dir, 'raw', 'httpx_urls.txt')
                 with open(urls_txt_path, 'w') as f:
                     f.write('\n'.join(urls) + '\n')
                 container_input = urls_txt_path.replace('\\', '/')
-                command = ['whatweb', '--input-file', container_input, '--log-json', container_output_file]
+                command = ['whatweb', '--input-file', container_input, '--log-json', container_output_file, '-q']
             else:
                 # No URLs extracted, fallback to scanning the domain directly
                 command = self.build_command(target, container_output_file)
@@ -48,12 +53,26 @@ class WhatWebModule(BaseModule):
             # No httpx.json, scan the domain directly
             command = self.build_command(target, container_output_file)
 
-        self._run_subprocess(command)
+        self._run_subprocess(command, output_file=host_output_file)
 
         try:
             content = self._read_output_file(host_output_file)
-            results = json.loads(content) if content.strip() else []
-        except (EmptyOutputError, json.JSONDecodeError):
+            # whatweb --log-json writes JSON lines, not a JSON array
+            results = []
+            for line in content.splitlines():
+                line = line.strip()
+                if line:
+                    try:
+                        results.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
+            if not results:
+                # Try parsing as a JSON array (older whatweb versions)
+                try:
+                    results = json.loads(content) if content.strip() else []
+                except json.JSONDecodeError:
+                    results = []
+        except EmptyOutputError:
             results = []
 
         return {
@@ -67,4 +86,4 @@ class WhatWebModule(BaseModule):
             tag_manager.add('has_tech_intel', confidence='high', source='whatweb')
 
     def estimated_requests(self) -> int:
-        return 50 # Single target is light, file input is handled internally without a tight predictable loop
+        return 50

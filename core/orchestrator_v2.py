@@ -331,6 +331,7 @@ class OrchestratorV2:
         try:
             # Instantiate tool
             tool = tool_class()
+            tool.tag_manager = self.tag_manager
 
             # Build resource estimate for scheduler
             estimate = self.tool_profiles.estimate_tool_resources(
@@ -391,7 +392,12 @@ class OrchestratorV2:
                 # We do a basic check here. If result is empty dict, we might not want to emit
                 found_something = True
                 if isinstance(result, dict):
-                    if result.get('count', 1) == 0 or not result.get('results', True):
+                    count = result.get('count', 1)
+                    results_data = result.get('results', True)
+                    if count == 0 or not results_data:
+                        found_something = False
+                elif isinstance(result, list):
+                    if not result:
                         found_something = False
                 
                 if found_something:
@@ -413,7 +419,9 @@ class OrchestratorV2:
             logger.success(f"{tool_name} completed in {elapsed:.1f}s")
 
         except Exception as e:
-            logger.error(f"Tool {tool_name} failed: {e}")
+            import traceback
+            error_msg = f"Tool {tool_name} failed: {e}\n{traceback.format_exc()}"
+            logger.error(error_msg)
             self.logger.tool_error(tool_name, e)
 
             # Record failure so we don't retry
@@ -445,6 +453,10 @@ class OrchestratorV2:
         """Main execution loop"""
         logger.info(f"Starting HuntForge scan for {self.domain}")
         self.scan_start_time = time.time()
+
+        # Record scan start in history DB for dashboard
+        output_dir = f"output/{self.domain}"
+        self.scan_id = self.scan_history.record_start(self.domain, os.path.abspath(output_dir))
 
         # Try to resume from checkpoint
         if self.checkpoint_file:
@@ -497,6 +509,10 @@ class OrchestratorV2:
 
         # Final checkpoint
         self.save_checkpoint()
+
+        # Record scan completion in history DB for dashboard
+        tag_count = len(self.tag_manager.tags) if hasattr(self.tag_manager, 'tags') else 0
+        self.scan_history.record_end(self.scan_id, 'COMPLETED', tag_count)
 
         # Generate summary files
         self._generate_summary()
@@ -554,6 +570,30 @@ class OrchestratorV2:
         processed_dir = output_dir / 'processed'
         processed_dir.mkdir(parents=True, exist_ok=True)
 
+        # Handle live_hosts (Phase 3)
+        if 'live_hosts' in output_files or 'live_hosts_txt' in output_files:
+            live_hosts = []
+            httpx_path = output_dir / 'raw' / 'httpx.json'
+            if httpx_path.exists():
+                try:
+                    with open(httpx_path) as f:
+                        for line in f:
+                            if line.strip():
+                                data = json.loads(line)
+                                if 'url' in data:
+                                    live_hosts.append(data['url'])
+                except Exception:
+                    pass
+            
+            if live_hosts:
+                if 'live_hosts' in output_files:
+                    with open(processed_dir / output_files['live_hosts'], 'w') as f:
+                        json.dump(live_hosts, f)
+                if 'live_hosts_txt' in output_files:
+                    with open(processed_dir / output_files['live_hosts_txt'], 'w') as f:
+                        f.write('\n'.join(live_hosts) + '\n')
+                logger.success(f"Processed {len(live_hosts)} live hosts")
+
         # Handle subdomains_merged (Phase 1)
         if 'subdomains_merged' in output_files:
             merged_path = processed_dir / output_files['subdomains_merged']
@@ -604,6 +644,69 @@ class OrchestratorV2:
             else:
                 logger.warning("No subdomains found from Phase 1 tools")
                 merged_path.write_text('')
+
+        # Handle all_urls (Phase 5) — merge katana, gau, paramspider outputs
+        if 'all_urls' in output_files:
+            all_urls = set()
+            url_sources = ['katana.txt', 'gau.txt', 'paramspider.txt']
+            for src_file in url_sources:
+                src_path = output_dir / 'raw' / src_file
+                if src_path.exists():
+                    try:
+                        with open(src_path) as f:
+                            for line in f:
+                                line = line.strip()
+                                if line and line.startswith('http'):
+                                    all_urls.add(line)
+                    except Exception:
+                        pass
+
+            merged_urls_path = processed_dir / output_files['all_urls']
+            if all_urls:
+                with open(merged_urls_path, 'w') as f:
+                    for url in sorted(all_urls):
+                        f.write(url + '\n')
+                logger.success(f"Merged {len(all_urls)} unique URLs -> {merged_urls_path}")
+            else:
+                logger.warning("No URLs found from Phase 5 tools")
+                merged_urls_path.write_text('')
+
+        # Handle parameters (Phase 5) — merge paramspider results
+        if 'parameters' in output_files:
+            params = []
+            # Paramspider output is usually a list of URLs with parameters
+            paramspider_path = output_dir / 'raw' / 'paramspider.txt'
+            if paramspider_path.exists():
+                try:
+                    with open(paramspider_path) as f:
+                        for line in f:
+                            line = line.strip()
+                            if line and '?' in line:
+                                params.append(line)
+                except Exception:
+                    pass
+            
+            # Katana can also find parameters (JC=true)
+            katana_path = output_dir / 'raw' / 'katana.txt'
+            if katana_path.exists():
+                try:
+                    with open(katana_path) as f:
+                        for line in f:
+                            line = line.strip()
+                            if line and '?' in line and line not in params:
+                                params.append(line)
+                except Exception:
+                    pass
+
+            if params:
+                param_out_path = processed_dir / output_files['parameters']
+                with open(param_out_path, 'w') as f:
+                    json.dump(params, f, indent=2)
+                logger.success(f"Merged {len(params)} URLs with parameters -> {param_out_path}")
+                # Set tag if parameters found
+                self.tag_manager.add('params_found', source='orchestrator', confidence='medium')
+            else:
+                (processed_dir / output_files['parameters']).write_text('[]')
 
 
 def main():

@@ -21,7 +21,7 @@ class WpscanModule(BaseModule):
         if api_token:
             cmd.extend(['--api-token', api_token])
 
-        self._run_subprocess(cmd)
+        self._run_subprocess(cmd, output_file=host_out)
 
         try:
             data = json.loads(self._read_output_file(host_out))

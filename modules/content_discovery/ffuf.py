@@ -8,7 +8,7 @@ class FfufModule(BaseModule):
         wl_config = self._cfg('wordlist', '~/.huntforge/wordlists/directories/raft-medium-words.txt')
         wl = os.path.expanduser(wl_config)
         if not os.path.exists(wl):
-            wl = '/usr/share/wordlists/dirb/common.txt'
+            wl = '/usr/share/dirb/wordlists/common.txt'
             
         cmd = ['ffuf', '-u', f'https://{target}/FUZZ', '-w', wl, '-o', container_out, '-of', 'json', '-s']
         
@@ -27,7 +27,7 @@ class FfufModule(BaseModule):
         os.makedirs(os.path.dirname(host_out), exist_ok=True)
         
         # It's better if we run ffuf on the domain or live hosts file. Default to domain for simplicity here.
-        self._run_subprocess(self.build_command(target, container_out))
+        self._run_subprocess(self.build_command(target, container_out), output_file=host_out)
         
         try:
             content = json.loads(self._read_output_file(host_out))

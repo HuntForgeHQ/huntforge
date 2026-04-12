@@ -23,7 +23,7 @@ class DalfoxModule(BaseModule):
         else:
             cmd = self.build_command(f'https://{target}', container_out)
 
-        self._run_subprocess(cmd)
+        self._run_subprocess(cmd, output_file=host_out)
 
         try:
             vulns = [l for l in self._read_output_file(host_out).splitlines() if l.strip()]

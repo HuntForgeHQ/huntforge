@@ -5,17 +5,18 @@ from core.exceptions import EmptyOutputError
 
 class WappalyzerModule(BaseModule):
     def build_command(self, target: str, container_out: str) -> list:
-        # Assuming we output via sh redirect because wappalyzer cli prints to stdout
+        # Use the Node.js wappalyzer CLI tool
+        # It takes a single URL and prints JSON to stdout
         return ['sh', '-c', f'wappalyzer https://{target} > {container_out}']
 
-    def run(self, target: str, output_dir: str, tag_manager, config: dict = None) -> dict:
+    def run(self, target: str, output_dir: str, tag_manager, config: dict = None, **kwargs) -> dict:
         self.config = config or {}
         
         host_out = os.path.join(output_dir, 'raw', 'wappalyzer.json')
         container_out = host_out.replace('\\', '/')
         os.makedirs(os.path.dirname(host_out), exist_ok=True)
         
-        self._run_subprocess(self.build_command(target, container_out))
+        self._run_subprocess(self.build_command(target, container_out), output_file=host_out)
         
         try:
             content = self._read_output_file(host_out)

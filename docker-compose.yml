@@ -12,10 +12,12 @@ services:
     working_dir: /huntforge
     command: tail -f /dev/null
     restart: unless-stopped
+    ports:
+      - "5000:5000"
     deploy:
       resources:
         limits:
-          memory: 1G
+          memory: 4G
         reservations:
           memory: 128M
     networks:

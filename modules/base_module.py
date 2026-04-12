@@ -144,70 +144,110 @@ class BaseModule:
             )
         return ["docker", "exec", self.docker_runner.container_name] + self.build_command(target, output_file)
 
-    def _run_subprocess(self, command: list) -> str:
+    def _run_subprocess(self, command: list, output_file: str = None) -> str:
         """
-        Execute a shell command. Depending on execution context:
+        Execute a shell command with smart timeout.
+        
+        Smart timeout behavior:
+        - If tool produces output by the timeout → extend and let it finish
+        - If tool produces NO output by the timeout → kill it
+        
+        Depending on execution context:
         - If running on host (docker CLI available): exec via DockerRunner into container.
         - If running inside container: run command directly via subprocess.
-
-        Handles checking if the binary exists and then executes.
-
+        
         Exceptions (ToolTimeoutError, ToolExecutionError, DockerNotRunningError)
         bubble up to the orchestrator.
         """
+        from core.smart_timeout_v2 import SmartTimeoutV2
+        
         tool_binary = command[0]
         timeout_seconds = self._cfg('timeout', default=300)
+
+        # WAF Evasion Injection
+        if hasattr(self, 'tag_manager') and self.tag_manager and self.tag_manager.has('has_waf'):
+            import random
+            user_agents = [
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Safari/605.1.15",
+                "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/115.0",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0"
+            ]
+            ua = random.choice(user_agents)
+            tool_name = tool_binary.split('/')[-1]
+            
+            if tool_name == 'nuclei':
+                if '-rl' not in command: command += ['-rl', '5']
+                if '-H' not in command: command += ['-H', f'User-Agent: {ua}']
+            elif tool_name == 'katana':
+                if '-rl' not in command: command += ['-rl', '5']
+                if '-H' not in command: command += ['-H', f'User-Agent: {ua}']
+            elif tool_name == 'ffuf':
+                if '-rate' not in command: command += ['-rate', '5']
+                if '-H' not in command: command += ['-H', f'User-Agent: {ua}']
+            elif tool_name == 'dalfox':
+                if '--worker' not in command: command += ['--worker', '5']
+                if '--delay' not in command: command += ['--delay', '200']
+                if '-H' not in command: command += ['-H', f'User-Agent: {ua}']
+            elif tool_name == 'wpscan':
+                if '--throttle' not in command: command += ['--throttle', '200']
+                if '--user-agent' not in command: command += ['--user-agent', ua]
+            elif tool_name == 'sqlmap':
+                if '--delay' not in command: command += ['--delay', '0.2']
+                if '--random-agent' not in command: command += ['--random-agent']
+            elif tool_name == 'whatweb':
+                if '--max-threads' not in command: command += ['--max-threads', '2']
+                if '--header' not in command: command += ['--header', f'User-Agent: {ua}']
+            elif tool_name == 'httpx':
+                if '-rl' not in command: command += ['-rl', '10']
+                if '-H' not in command: command += ['-H', f'User-Agent: {ua}']
 
         if self.docker_runner is not None:
             # ── Docker mode: host running orchestrator, use docker exec ─────
             # Step 1: Check binary is installed INSIDE container
             try:
-                check = self.docker_runner.exec_raw(['which', tool_binary], timeout=5)
+                if tool_binary.startswith('/'):
+                    check_cmd = ['test', '-x', tool_binary]
+                else:
+                    check_cmd = ['which', tool_binary]
+                check = self.docker_runner.exec_raw(check_cmd, timeout=5)
                 if check.returncode != 0:
                     raise BinaryNotFoundError(
                         f"'{tool_binary}' is not installed inside the Kali container.",
                         tool=tool_binary
                     )
             except Exception as e:
-                # If exec_raw fails (e.g., DockerNotRunningError), bubble it up
                 if isinstance(e, BinaryNotFoundError):
                     raise
-                # Calling is_container_running() will raise DockerNotRunningError if down
                 self.docker_runner.is_container_running()
 
-            # Step 2: Run the tool via DockerRunner
-            return self.docker_runner.exec(command, timeout=timeout_seconds)
+            # Step 2: Run the tool with smart timeout via docker exec
+            docker_cmd = ['docker', 'exec', self.docker_runner.container_name] + command
+            
+            runner = SmartTimeoutV2(
+                command=docker_cmd,
+                timeout=timeout_seconds,
+                output_file=output_file,
+                tool_name=tool_binary,
+                is_docker=True,
+            )
+            return runner.run()
         else:
             # ── Direct mode: already inside container, run locally ─────
-            # Check binary exists using shutil.which
-            if not shutil.which(tool_binary):
+            if not (os.path.isabs(tool_binary) and os.path.isfile(tool_binary)) and not shutil.which(tool_binary):
                 raise BinaryNotFoundError(
                     f"'{tool_binary}' is not installed or not in PATH.",
                     tool=tool_binary
                 )
 
-            # Run the command directly
-            try:
-                result = subprocess.run(
-                    command,
-                    capture_output=True,
-                    text=True,
-                    timeout=timeout_seconds
-                )
-            except subprocess.TimeoutExpired:
-                raise ToolTimeoutError(
-                    f"'{tool_binary}' timed out after {timeout_seconds}s.",
-                    tool=tool_binary
-                )
-
-            if result.returncode != 0:
-                raise ToolExecutionError(
-                    f"'{tool_binary}' exited with code {result.returncode}. "
-                    f"stderr: {result.stderr[:500].strip()}",
-                    tool=tool_binary
-                )
-
-            return result.stdout
+            runner = SmartTimeoutV2(
+                command=command,
+                timeout=timeout_seconds,
+                output_file=output_file,
+                tool_name=tool_binary,
+                is_docker=False,
+            )
+            return runner.run()
 
     def _read_output_file(self, host_filepath: str) -> str:
         """

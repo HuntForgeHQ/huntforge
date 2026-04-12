@@ -22,7 +22,12 @@ RUN apt-get update && apt-get install -y \
     whatweb \
     golang \
     pipx \
+    nodejs \
+    npm \
     && rm -rf /var/lib/apt/lists/*
+
+# Install global NPM packages
+RUN npm install -g wappalyzer
 
 # Setup Go environment
 ENV GOPATH=/go

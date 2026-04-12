@@ -15,7 +15,7 @@ class TrufflehogModule(BaseModule):
         os.makedirs(os.path.dirname(host_out), exist_ok=True)
         
         try:
-            self._run_subprocess(self.build_command(target, container_out))
+            self._run_subprocess(self.build_command(target, container_out), output_file=host_out)
         except Exception as e:
             if 'exited with code 1' not in str(e): raise
             
