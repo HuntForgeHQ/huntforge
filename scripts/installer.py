@@ -58,7 +58,7 @@ def run_cmd(cmd: List[str], check=True, capture_output=False) -> Tuple[bool, str
             cmd,
             capture_output=capture_output,
             text=True,
-            timeout=300
+            timeout=900
         )
         if check and result.returncode != 0:
             return False, result.stderr
@@ -256,7 +256,7 @@ class HuntForgeInstaller:
             'linkfinder': ('pip', 'linkfinder'),
 
             # Phase 3 - Discovery
-            'httpx': ('go', 'github.com/projectdiscovery/httpx/cmd/httpx@latest'),
+            'httpx': ('apt', 'httpx-toolkit'),
             'dnsx': ('apt', 'dnsx'),
             'naabu': ('apt', 'naabu'),
             'puredns': ('go', 'github.com/d3mondev/puredns/cmd/puredns@latest'),
