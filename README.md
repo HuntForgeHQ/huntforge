@@ -8,10 +8,10 @@
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue)](https://www.docker.com/)
 [![OpenRouter](https://img.shields.io/badge/AI_Powered-OpenRouter-a855f7.svg)](https://openrouter.ai/)
 
-**16 carefully curated tools. Complete Autonomous WAF Evasion. Dynamic Tag-Flow. Zero noise.**  
-HuntForge bridges the gap between chaotic unguided enumeration scripts and precise, red-team exploitation logic.
+**16 carefully curated tools. Autonomous WAF Evasion. Dynamic Tag-Flow. Zero noise.**  
+HuntForge bridges the gap between chaotic enumeration scripts and precise, red-team exploitation logic.
 
-[Features](#-key-features) • [Architecture](#-architecture--tag-flow) • [Installation](#-installation) • [Usage](#-usage) • [Contributing](#-contributing)
+[Features](#-key-features) • [Architecture](#-architecture--tag-flow) • [Installation](#-installation) • [Usage](#-usage) • [Dashboard](#-dashboard) • [Contributing](#-contributing)
 
 ---
 
@@ -19,45 +19,43 @@ HuntForge bridges the gap between chaotic unguided enumeration scripts and preci
 
 ## 📖 What is HuntForge?
 
-HuntForge is a strict, containerized vulnerability discovery orchestrator built for the modern Bug Bounty landscape. It solves the "Kitchen Sink" problem by avoiding blind `cat | tool_a | tool_b` bash scripts. 
-
-Instead, HuntForge employs **Artificial Intelligence (via OpenRouter integration)** to construct dynamic, surgical methodologies based on natural language objectives, and executes them via an **Adaptive Resource Scheduler** that continuously monitors your hardware limits.
+HuntForge is a strict, containerized vulnerability discovery orchestrator built for the modern Bug Bounty landscape. It solves the "Kitchen Sink" problem — instead of blindly piping output across 50+ deprecated tools, HuntForge uses **AI-generated methodologies** and an **Adaptive Resource Scheduler** to run exactly what's needed, only when it makes sense.
 
 ### The HuntForge Philosophy
-1. **Quality over Quantity**: We stripped out legacy tools (Nikto, Dirb, older wrappers). We employ exactly 16 heavily maintained, modern binaries (ProjectDiscovery, Ffuf, Sqlmap, Dalfox, etc.).
-2. **Autonomous Evasion**: Don't lose hours to silent 403 blocks. The framework shift-lefts WAF detection (Akamai, Cloudflare, AWS) into Phase 3 and natively intercepts heavy tools (Nuclei, Katana, Ffuf) to apply rate limits and dynamic User-Agents.
-3. **No Hardware Freezes**: The `ResourceAwareScheduler` and `SmartTimeoutV2` dynamically throttle container concurrency and kill zombie processes based on true CPU, IO, and Memory availability in your VPS environment.
-4. **Smart Tag-Flow**: Execution isn't linear. If Phase 1 flags `has_api`, the orchestrator conditionally unlocks Phase 4 tools tailored exclusively for APIs.
+1. **Quality over Quantity**: 16 heavily curated, modern binaries — not 50 legacy wrappers.
+2. **Autonomous Evasion**: Shift-left WAF detection in Phase 3. Automatic rate-limiting and User-Agent rotation on all downstream tools.
+3. **No Hardware Freezes**: `ResourceAwareScheduler` + `SmartTimeoutV2` dynamically throttle concurrency and extend/kill processes based on real CPU, IO, and RAM.
+4. **Smart Tag-Flow**: Non-linear execution — if Phase 1 emits `has_api`, Phase 4 conditionally unlocks API-specific tools.
 
 ---
 
 ## 🔥 Key Features
 
-- **Shift-Left WAF Detection**: Detects Akamai/Cloudflare inside Httpx parsing, instantly flagging the framework to decelerate fuzzers.
-- **Dynamic Command Interception**: Core module wrappers dynamically append `-rl` loops, timeout overrides, and browser heuristics if targets become hostile.
-- **Interactive Local Dashboard**: Real-time visualization of scanning timelines via a lightweight, decoupled Flask + SQLite observability UI (`dashboard/app.py`).
-- **Automated AI Penetration Reports**: Instantly aggregates raw JSON tool artifacts into professional Executive Markdown Reports via OpenRouter's API synthesis.
-- **OpenRouter Fallbacks**: Connects directly to `gemini-2.5-flash` natively through OpenRouter without requiring local LLM weights chewing up GPU resources.
-- **Infinite Run Extensions**: `SmartTimeoutV2` watches subprocess resource/IO hooks; if Nuclei or Dalfox are visibly working and making progress, they are intelligently extended rather than forcefully terminated.
-- **State Checkpointing**: System crash? VPS reboot? Run `huntforge.py resume target.com`. It picks up exactly where it died.
+| Feature | Description |
+|:---|:---|
+| **AI Methodology Generation** | Describe your goal in plain English. OpenRouter (`gemini-2.5-flash`) writes a surgical YAML methodology instantly. |
+| **Autonomous WAF Evasion** | Detects Akamai/Cloudflare/Imperva during `httpx` parsing. Automatically injects `-rl`, `--delay`, `--throttle`, and rotating browser User-Agents into all downstream tools. |
+| **Interactive Dashboard** | Real-time Flask + SQLite web UI showing scan history, tag intelligence graphs, and budget consumption per scan. |
+| **AI Executive Reports** | After scanning, generates a professional Markdown penetration report (Executive Summary, Critical Findings, Recommendations) via OpenRouter. |
+| **SmartTimeoutV2** | Uses `psutil` to monitor subprocess CPU and IO activity. Extends actively-working tools indefinitely; kills truly hung processes. |
+| **State Checkpointing** | Crash mid-scan? `huntforge resume target.com` picks up exactly where it stopped. |
+| **Scope Enforcement** | Strict wildcard-based scope checking via `~/.huntforge/scope.json`. Blocks out-of-scope targets with manual override confirmation. |
+| **Budget Tracking** | Tracks total HTTP requests and elapsed time per scan to ensure respectful, rate-limited engagement. |
+| **Tag-Driven Conditional Execution** | Tools only run when prerequisite intelligence tags (`has_wordpress`, `params_found`, `has_waf`) are present. |
 
 ---
 
 ## 📐 Architecture & Tag-Flow
 
-HuntForge is built on a highly modular, decoupled architecture where AI, memory management, and binary execution are isolated from each other.
-
 ### Ecosystem Topology
 
 ```mermaid
 flowchart LR
-    %% Theming
     classDef control fill:#1f2937,stroke:#3b82f6,stroke-width:2px,color:#fff,rx:8,ry:8
     classDef ai fill:#312e81,stroke:#a855f7,stroke-width:2px,color:#fff,rx:8,ry:8
     classDef system fill:#0f172a,stroke:#10b981,stroke-width:2px,color:#fff,rx:8,ry:8
     classDef external fill:#b91c1c,stroke:#f87171,stroke-width:2px,color:#fff,rx:15,ry:15
 
-    %% Nodes
     A["💻 CLI Input"]:::control --> B{"🧠 AI Methodology Engine"}:::ai
     B --> C["⚙️ OrchestratorV2"]:::system
     B -. "gemini-2.5-flash" .-> OR["☁️ OpenRouter API"]:::ai
@@ -68,145 +66,247 @@ flowchart LR
         direction TB
         C <--> |Throttles| RM(("📊 Resource Monitor\n(CPU/RAM/IO)")):::system
         C --> |Injects State| TM["🏷️ Tag Manager"]:::system
-        C --> |Intercepts Flags| Eva["🛡️ Evasion Controller\n(Auto-RL, UA-Rotator)"]:::system
-        Eva --> Mod["🧰 16 Core Modules\n(Nuclei, Dalfox, etc.)"]:::system
+        C --> |Intercepts Cmds| Eva["🛡️ WAF Evasion\n(Auto-RL, UA-Rotator)"]:::system
+        Eva --> Mod["🧰 16 Core Modules"]:::system
         TM --> |Matches if_tag| Mod
-        RM -. |Kills/Extends via SmartTimeout| .-> Mod
+        RM -. |SmartTimeoutV2| .-> Mod
     end
 
-    Mod ===>|Executes Binaries| Target[("🎯 Target Scope")]:::external
+    Mod ===>|Executes| Target[("🎯 Target")]:::external
 ```
 
 ### The Tag-Flow Execution Lifecycle
 
 ```mermaid
 graph TD
-    %% Styling
     classDef phase fill:#1e293b,stroke:#3b82f6,stroke-width:2px,color:#fff,rx:8,ry:8
     classDef ai_phase fill:#312e81,stroke:#a855f7,stroke-width:2px,color:#fff,rx:8,ry:8
     classDef tag fill:#065f46,stroke:#10b981,stroke-width:1px,color:#fff,rx:15,ry:15
     classDef waf fill:#7f1d1d,stroke:#ef4444,stroke-width:2px,color:#fff,rx:5,ry:5
 
-    %% Nodes
-    A["🤖 AI: Generate Strategy"]:::ai_phase --> B{"📄 Dynamic YAML Setup"}:::ai_phase
-    B -.-> C["🔍 Phase 1: Passive Recon\n(Subfinder, Crt.sh)"]:::phase
-    
-    C --> T1("🏷️ tag: subdomains_found"):::tag
-    T1 --> D["⚡ Phase 2: Active Discovery\n(Httpx, Naabu)"]:::phase
-    
-    D --> T2("🏷️ tag: live_hosts_found"):::tag
-    D --> WAF(("🛡️ tag: has_waf")):::waf
-    
-    T2 --> E["🌐 Phase 3: Surface Intel\n(WhatWeb, Node Wappalyzer)"]:::phase
-    WAF -.-> |Triggers Throttling| F
-    WAF -.-> |Triggers Throttling| G
-    
-    E --> T3("🏷️ tag: has_api / has_params"):::tag
-    T3 --> F["🕷️ Phase 4: Targeted Enum\n(Katana, GAU, Arjun)"]:::phase
-    
-    F --> T4("🏷️ tag: xss_candidates / sqli"):::tag
-    T4 --> G["💣 Phase 5: Vulnerability Sweeps\n(Nuclei, Dalfox, SQLMap)"]:::phase
-    
-    G -.-> H["📑 AI: Executive Markdown Report"]:::ai_phase
+    A["🤖 AI: Generate Strategy"]:::ai_phase --> B{"📄 Dynamic YAML"}:::ai_phase
+    B -.-> P1["Phase 1: Passive Recon\n(Subfinder, Crt.sh)"]:::phase
+    P1 --> T1("🏷️ subdomains_found"):::tag
+
+    T1 --> P2["Phase 2: Secrets\n(Gitleaks, TruffleHog)"]:::phase
+    P2 --> P3["Phase 3: Discovery\n(Httpx, Naabu)"]:::phase
+
+    P3 --> T2("🏷️ live_hosts_found"):::tag
+    P3 --> WAF(("🛡️ has_waf")):::waf
+
+    T2 --> P4["Phase 4: Surface Intel\n(WhatWeb, Wappalyzer)"]:::phase
+    WAF -.-> |Auto Rate-Limit| P5
+    WAF -.-> |Auto Rate-Limit| P7
+
+    P4 --> T3("🏷️ has_wordpress / has_api"):::tag
+    T3 --> P5["Phase 5: Enumeration\n(Katana, GAU, ParamSpider)"]:::phase
+
+    P5 --> T4("🏷️ params_found"):::tag
+    T4 --> P6["Phase 6: Content Discovery\n(Ffuf, WPScan)"]:::phase
+
+    P6 --> P7["Phase 7: Vuln Scanning\n(Nuclei, Dalfox, SQLMap)"]:::phase
+    P7 -.-> Report["📑 AI Executive Report"]:::ai_phase
 ```
 
 ---
 
 ## 🚀 Installation
 
-### 1. Prerequisites
+### Prerequisites
 - Docker + Docker Compose V2
-- `python 3.9+` (on host)
-- Minimum Hardware: **1GB RAM, 10GB Storage** *(Adaptive Scheduler will operate flawlessly within a tiny VPS).*
+- Python 3.9+ (on host, for the CLI)
+- Minimum Hardware: **1 GB RAM, 10 GB disk**
 
-### 2. Environment Configuration
-Create a `.env` file at the root of the project to configure the OpenRouter AI and other API keys:
-```env
-OPENROUTER_API_KEY="sk-or-v1-..."
-OPENROUTER_MODEL="google/gemini-2.5-flash"
-OPENROUTER_API_URL="https://openrouter.ai/api/v1/chat/completions"
-# Add standard API keys for Shodan, GitHub, etc., here.
+### 1. Environment Configuration
+```bash
+cp .env.example .env
+# Edit .env with your OpenRouter API key:
+#   OPENROUTER_API_KEY="sk-or-v1-..."
 ```
 
-### 3. Deployment
-Boot the environment and compile the binaries directly inside the hardened container.
+### 2. Deployment
 ```bash
-# Provision isolated Kali environment
+# Build the isolated Kali container with all 16 tools
 docker-compose up -d --build
 
-# Run the system methodology provisioner 
-docker exec -u root huntforge-kali ./scripts/installer.py --profile professional
+# Provision tool binaries inside the container
+docker exec -u root huntforge-kali python3 scripts/installer.py --profile professional
 ```
 
 ---
 
 ## 💻 Usage
 
-HuntForge uses a singular CLI script to drive the entire container lifecycle seamlessly from the host machine. Run all commands directly via `huntforge.py` (which internally wraps `docker exec` logic).
+All commands are run from the host machine via the `huntforge.py` CLI, which orchestrates execution inside the Docker container.
 
-### Professional Default Scan
-Run the entire 16-tool standard methodology loop across all 7 Phases.
+### CLI Reference
+
+| Command | Description |
+|:---|:---|
+| `huntforge.py scan <domain>` | Run a full 7-phase reconnaissance scan |
+| `huntforge.py scan <domain> --methodology <path>` | Scan using a custom methodology YAML |
+| `huntforge.py ai "<prompt>"` | Generate a focused methodology via OpenRouter AI |
+| `huntforge.py report <domain>` | Generate an executive AI penetration report |
+| `huntforge.py resume <domain>` | Resume an interrupted scan from its checkpoint |
+| `huntforge.py dashboard` | Launch the web dashboard on `http://localhost:5000` |
+| `huntforge.py dashboard --port 8080` | Launch the dashboard on a custom port |
+
+### Full Professional Scan
 ```bash
 python3 huntforge.py scan target.com --methodology config/methodologies/professional.yaml
 ```
 
-### AI-Generated Ephemeral Scans
-Tell OpenRouter precisely what you are hunting for. The AI will write a disposable YAML file matching your needs and immediately execute it.
+### AI-Generated Methodology
 ```bash
-# 1. Ask AI to write a strict plan
-python3 huntforge.py ai "focus only on finding heavy PII exposure and S3 misconfigurations"
+# Ask AI to write a methodology focused on your specific goal
+python3 huntforge.py ai "find XSS and SQLi vulnerabilities in API endpoints"
 
-# 2. Fire the orchestrator 
+# Execute the generated methodology
 python3 huntforge.py scan target.com --methodology config/generated_methodology.yaml
 ```
 
+### Generate Executive Report
+After a scan completes, generate a professional AI-written report:
+```bash
+python3 huntforge.py report target.com
+# Output: output/target.com/logs/ai_report.md
+```
+
 ### Resume Interrupted Scans
-Did your SSH session drop or VPS reboot during Nuclei scanning? 
 ```bash
 python3 huntforge.py resume target.com
 ```
 
 ---
 
-## 🎓 The "Quality Over Quantity" Toolset
+## 📊 Dashboard
 
-Professional hunting relies on precision. We have stripped HuntForge down strictly to these 16 world-class binaries:
+HuntForge includes a built-in web dashboard for visualizing scan history, tag intelligence, and budget consumption.
 
-| Phase Category | Core Native Binaries Used |
-| :--- | :--- |
-| **Passive Intelligence** | `subfinder`, `crtsh` |
-| **Live Asset Discovery** | `httpx`, `naabu` |
-| **Surface Fingerprinting** | `whatweb`, `wappalyzer` (Node.js Build) |
-| **Crawling & Enumeration** | `katana`, `gau`, `paramspider`, `arjun`, `graphql_voyager` |
-| **Content Discovery** | `ffuf`, `wpscan`|
-| **Vulnerability Scanning** | `nuclei`, `subjack`, `dalfox`, `sqlmap` |
+```bash
+python3 huntforge.py dashboard
+# → http://localhost:5000
+```
+
+**Dashboard Features:**
+- **Scan History Table** — View all past scans with status (RUNNING, COMPLETED, FAILED, INTERRUPTED), tag count, and timestamps
+- **Scan Detail View** — Drill into any scan to see budget consumption (requests used / max), elapsed time, and output directory
+- **Intelligence Graph** — Visual display of all discovered tags with confidence levels and source attribution (color-coded by confidence: high/medium/low)
+
+---
+
+## 🎓 The Toolset
+
+| Phase | Tools | Purpose |
+|:---|:---|:---|
+| **1. Passive Recon** | `subfinder`, `crtsh` | Subdomain enumeration from passive sources |
+| **2. Secrets & OSINT** | `gitleaks`, `trufflehog` | Leaked credentials and hardcoded secrets |
+| **3. Live Discovery** | `httpx`, `naabu` | HTTP probing, port scanning, **WAF detection** |
+| **4. Surface Intel** | `whatweb`, `wappalyzer` | Technology fingerprinting |
+| **5. Enumeration** | `katana`, `gau`, `paramspider`, `arjun`, `graphql_voyager` | URL crawling, parameter discovery |
+| **6. Content Discovery** | `ffuf`, `wpscan` | Directory fuzzing, WordPress scanning |
+| **7. Vuln Scanning** | `nuclei`, `subjack`, `dalfox`, `sqlmap` | CVE detection, XSS, SQLi, subdomain takeover |
+
+---
+
+## 🛡️ WAF Evasion System
+
+When `httpx` detects a WAF (Akamai, Cloudflare, Imperva, AWS, etc.), the framework autonomously injects tool-specific evasion switches:
+
+| Tool | Injected Flags | Effect |
+|:---|:---|:---|
+| `nuclei` | `-rl 5`, `-H User-Agent: ...` | 5 req/sec, browser UA |
+| `katana` | `-rl 5`, `-H User-Agent: ...` | 5 req/sec, browser UA |
+| `ffuf` | `-rate 5`, `-H User-Agent: ...` | 5 req/sec, browser UA |
+| `dalfox` | `--worker 5`, `--delay 200`, `-H ...` | 5 workers, 200ms delay |
+| `wpscan` | `--throttle 200`, `--user-agent ...` | 200ms throttle |
+| `sqlmap` | `--delay 0.2`, `--random-agent` | 200ms delay, random UA |
+| `whatweb` | `--max-threads 2`, `--header ...` | 2 threads, browser UA |
+
+This happens transparently — no manual configuration required.
+
+---
+
+## 📁 Project Structure
+
+```
+huntforge/
+├── huntforge.py              # CLI entry point (scan, ai, report, resume, dashboard)
+├── Dockerfile.kali            # Kali container with all 16 tools + Node.js
+├── docker-compose.yml         # Container orchestration
+├── requirements.txt           # Python dependencies
+│
+├── ai/
+│   ├── methodology_engine.py  # AI methodology generation via OpenRouter
+│   ├── openrouter_helper.py   # Shared OpenRouter API client
+│   └── report_generator.py    # AI executive report synthesis
+│
+├── core/
+│   ├── orchestrator_v2.py     # Main 7-phase execution engine
+│   ├── resource_aware_scheduler.py  # CPU/RAM adaptive throttling
+│   ├── smart_timeout_v2.py    # psutil-based process monitoring
+│   ├── tag_manager.py         # Intelligence tag system
+│   ├── budget_tracker.py      # Request/time budget enforcement
+│   ├── scope_enforcer.py      # Wildcard scope validation
+│   ├── scan_history.py        # SQLite scan metadata recording
+│   ├── docker_runner.py       # Container execution wrapper
+│   ├── hf_logger.py           # Structured logging
+│   ├── siem_formatter.py      # Log formatting for SIEM
+│   └── exceptions.py          # Custom exception hierarchy
+│
+├── modules/
+│   ├── base_module.py         # Abstract base + WAF evasion interceptor
+│   ├── passive/               # subfinder, crtsh
+│   ├── secrets/               # gitleaks, trufflehog
+│   ├── discovery/             # httpx, naabu
+│   ├── surface_intel/         # whatweb, wappalyzer
+│   ├── enumeration/           # katana, gau, paramspider, arjun, graphql_voyager
+│   ├── content_discovery/     # ffuf, wpscan
+│   └── vuln_scan/             # nuclei, dalfox, sqlmap, subjack
+│
+├── config/
+│   ├── default_methodology.yaml     # Full 7-phase methodology
+│   └── methodologies/
+│       └── professional.yaml        # Curated 16-tool methodology
+│
+├── dashboard/
+│   ├── app.py                 # Flask web server
+│   ├── static/style.css       # Dashboard styling
+│   └── templates/             # Jinja2 HTML templates
+│
+├── data/
+│   ├── tool_profiles.yaml     # Resource profiles per tool
+│   └── tool_fingerprints.json # Binary detection signatures
+│
+└── scripts/
+    └── installer.py           # Container tool provisioner
+```
 
 ---
 
 ## 🤝 Contributing
 
-We are actively seeking pull requests to make HuntForge the most robust Red-Teaming infrastructure tool available!
+We welcome contributions to make HuntForge the most robust red-team reconnaissance framework available.
 
-However, **HuntForge is a deeply opinionated framework designed for absolute noise-reduction.** We do not accept additions for archaic bloatware tools.
+**Accepted PRs:**
+- ✅ Improving WAF signature detection in `modules/discovery/httpx.py`
+- ✅ Adding new evasion switches in `modules/base_module.py`
+- ✅ Enhancing AI prompts in `ai/methodology_engine.py` and `ai/report_generator.py`
+- ✅ Creating new `methodologies/*.yaml` for specific attack vectors
+- ✅ Expanding `emit_tags()` in any module to extract richer intelligence
 
-**Acceptable PRs include:**
-- ✅ Fixing/Enhancing syntax anomalies in the `ResourceAwareScheduler` or `SmartTimeoutV2` logic.
-- ✅ Expanding AI Prompts for OpenRouter syntax and context.
-- ✅ Expanding module `emit_tags` logic to extract richer metadata (e.g., detecting new AWS/Azure headers for `has_waf`).
-- ✅ Adding new `methodologies/*.yaml` templates for specific vulnerability vectors.
+**Rejected PRs:**
+- ❌ Re-adding deprecated tools (Nikto, Dirb, legacy Amass)
+- ❌ Committing `.env`, `output/`, or `__pycache__/` into the repository
 
-**Rejected PRs include:**
-- ❌ Re-adding deprecated wrappers or unmaintained tools (e.g., Nikto, Dirb, legacy Amass plugins).
-- ❌ Hardcoding target domains, IP restrictions, or local `.env` variables into Git.
-
-**How to get started:**
-1. Clone the project.
-2. Read the logic inside `/core/orchestrator_v2.py`.
-3. Open an issue detailing your proposed heuristic fix.
-4. Keep logic strictly wrapped inside `/modules/base_module.py` bounds!
+**How to contribute:**
+1. Fork the repository
+2. Read `core/orchestrator_v2.py` and `modules/base_module.py`
+3. Open an issue describing your proposed change
+4. Submit a PR against `main`
 
 ---
 
 <div align="center">
-  <b>Happy Bug Hunting. Keep it clean.</b> 🎯
+  <b>Happy Bug Hunting.</b> 🎯
 </div>

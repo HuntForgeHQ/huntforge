@@ -14,8 +14,10 @@ Responsibilities:
 
 import os
 import sys
+import argparse
 import yaml
 import json
+import subprocess
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -268,12 +270,21 @@ def build_parser():
     ai.add_argument("prompt", help="Instruction prompt for AI")
 
     # report
-    report = sub.add_parser("report", help="Generate or open report")
+    report = sub.add_parser("report", help="Generate executive AI report")
     report.add_argument("domain")
 
     # resume
     resume = sub.add_parser("resume", help="Resume a previous scan")
     resume.add_argument("domain")
+
+    # dashboard
+    dash = sub.add_parser("dashboard", help="Launch the HuntForge web dashboard")
+    dash.add_argument(
+        "--port",
+        default=5000,
+        type=int,
+        help="Port to run the dashboard on (default: 5000)"
+    )
 
     return parser
 
@@ -283,8 +294,6 @@ def build_parser():
 # --------------------------------------------------------
 
 def main():
-    import argparse  # noqa: F811 — intentional lazy import for argparse
-
     print_banner()
 
     parser = build_parser()
@@ -309,9 +318,17 @@ def main():
     elif args.command == "resume":
         resume_scan(domain=args.domain)
 
+    elif args.command == "dashboard":
+        console.print(
+            f"[cyan]Starting HuntForge Dashboard on http://localhost:{args.port}[/cyan]"
+        )
+        subprocess.run(
+            [sys.executable, "dashboard/app.py"],
+            env={**os.environ, "FLASK_RUN_PORT": str(args.port)},
+        )
+
 
 # --------------------------------------------------------
 
 if __name__ == "__main__":
-    import argparse
     main()
