@@ -6,8 +6,8 @@ Detects OS, checks installed tools, installs missing ones.
 Works on: Kali, Ubuntu, Debian, macOS, Windows WSL2
 
 Usage:
-  python3 scripts/installer.py --profile lite|medium|full
-  python3 scripts/installer.py --profile lite --download-wordlists
+  python3 scripts/installer.py --profile professional
+  python3 scripts/installer.py --download-wordlists
 """
 
 import os
@@ -317,16 +317,7 @@ class HuntForgeInstaller:
         }
     }
 
-    # Tools needed by profile
-    # NOTE: Profile equalization - all profiles install the full set of tools.
-    # The profile-specific behavior (which tools run, with what parameters) is
-    # controlled by config/profiles/{profile}.yaml at runtime.
-    #
-    # Only actual binaries/tools are listed here. Method-specific aliases like
-    # nuclei_cms, nuclei_auth, wpscan_vuln are NOT separate installations -
-    # they use the same binary with different configuration.
-
-    # PROFESSIONAL PROFILE: What real bug bounty hunters actually use (16 tools)
+    # TOOLS: What real bug bounty hunters actually use (16 tools)
     PROFESSIONAL_TOOLS = [
         # Phase 1 - Passive Recon (2 tools)
         'subfinder', 'crtsh',
@@ -350,36 +341,12 @@ class HuntForgeInstaller:
         'nuclei', 'subjack', 'dalfox',
     ]
 
-    # LITE PROFILE: Minimal setup for testing
-    LITE_TOOLS = PROFESSIONAL_TOOLS  # Same as professional
-
-    # FULL/MEDIUM PROFILE: Everything (40+ tools) - not recommended but available
-    FULL_TOOLS = [
-            # Phase 1 - Passive Recon
-            'subfinder', 'amass', 'assetfinder', 'findomain', 'theharvester', 'waybackurls', 'crtsh', 'chaos',
-            # Phase 2 - Secrets
-            'gitleaks', 'trufflehog', 'jsluice', 'secretfinder', 'linkfinder', 'github_dorking',
-            # Phase 3 - Discovery
-            'httpx', 'dnsx', 'naabu', 'puredns', 'gowitness', 'asnmap',
-            # Phase 4 - Surface Intel
-            'whatweb', 'wappalyzer_cli', 'nmap_service', 'shodan_cli', 'censys_cli',
-            # Phase 5 - Enumeration
-            'katana', 'gau', 'gospider', 'paramspider', 'arjun', 'gf_extract', 'graphql_voyager',
-            # Phase 6 - Content Discovery
-            'ffuf', 'dirsearch', 'feroxbuster', 'wpscan', 's3scanner', 'cloud_enum',
-            # Phase 7 - Vuln Scan
-            'nuclei', 'subjack', 'nikto', 'dalfox', 'sqlmap',
-        ]
-
     # Profile to tools mapping
     PROFILE_TOOLS = {
         'professional': PROFESSIONAL_TOOLS,
-        'lite': LITE_TOOLS,
-        'medium': FULL_TOOLS,
-        'full': FULL_TOOLS,
     }
 
-    def __init__(self, profile: str = 'lite', download_wordlists: bool = False):
+    def __init__(self, profile: str = 'professional', download_wordlists: bool = False):
         self.profile = profile
         self.download_wordlists = download_wordlists
         self.os_family, self.pkg_manager = detect_os()
@@ -521,7 +488,7 @@ class HuntForgeInstaller:
             return
 
         # Check if there are any apt or pip tools to install
-        tools = self.PROFILE_TOOLS.get(self.profile, self.PROFILE_TOOLS['lite'])
+        tools = self.PROFILE_TOOLS.get('professional', self.PROFILE_TOOLS['professional'])
         needs_apt = any(
             self.TOOL_INSTALL_MAP.get(self.os_family, {}).get(t) and
             self.TOOL_INSTALL_MAP[self.os_family][t] and
@@ -652,7 +619,7 @@ class HuntForgeInstaller:
         self.setup_directories()
 
         # Get tools for profile
-        tools = self.PROFILE_TOOLS.get(self.profile, self.PROFILE_TOOLS['lite'])
+        tools = self.PROFILE_TOOLS.get('professional', self.PROFILE_TOOLS['professional'])
         installed = self.check_existing_tools(tools)
 
         self.install_missing_tools(tools, installed)
@@ -666,8 +633,8 @@ class HuntForgeInstaller:
 
 def main():
     parser = argparse.ArgumentParser(description="HuntForge Installer")
-    parser.add_argument('--profile', choices=['lite', 'medium', 'full', 'professional'],
-                       default='lite', help='Installation profile (default: lite)')
+    parser.add_argument('--profile', choices=['professional'],
+                       default='professional', help='Installation profile (default: professional)')
     parser.add_argument('--download-wordlists', action='store_true',
                        help='Download minimal wordlists (~100MB)')
     args = parser.parse_args()
