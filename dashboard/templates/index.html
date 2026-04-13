@@ -2,45 +2,44 @@
 <html>
 <head>
     <title>HuntForge Dashboard</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 2rem; background: #0f172a; color: #f8fafc; }
-        h1 { color: #38bdf8; }
-        .card { background: #1e293b; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem; }
-        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #334155; }
-        th { color: #94a3b8; }
-        a { color: #38bdf8; text-decoration: none; }
-        a:hover { text-decoration: underline; }
-        .status-run { color: #fbbf24; }
-        .status-done { color: #34d399; }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <h1>HuntForge Dashboard</h1>
-    <div class="card">
-        <h2>Recent Scans</h2>
-        <table>
-            <tr>
-                <th>ID</th>
-                <th>Domain</th>
-                <th>Status</th>
-                <th>Tags Discovered</th>
-                <th>Start Time</th>
-                <th>Action</th>
-            </tr>
-            {% for scan in scans %}
-            <tr>
-                <td>{{ scan.id }}</td>
-                <td><strong>{{ scan.domain }}</strong></td>
-                <td class="{% if scan.status == 'RUNNING' %}status-run{% else %}status-done{% endif %}">{{ scan.status }}</td>
-                <td>{{ scan.tag_count or '?' }}</td>
-                <td>{{ scan.start_time }}</td>
-                <td><a href="/scan/{{ scan.id }}">View Details</a></td>
-            </tr>
-            {% else %}
-            <tr><td colspan="6">No scans recorded yet.</td></tr>
-            {% endfor %}
-        </table>
+    <div class="container">
+        <h1>HuntForge Dashboard</h1>
+        <div class="card">
+            <h2>Recent Scans</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Domain</th>
+                        <th>Status</th>
+                        <th>Tags Discovered</th>
+                        <th>Start Time</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for scan in scans %}
+                    <tr>
+                        <td>{{ scan.id }}</td>
+                        <td><strong>{{ scan.domain }}</strong></td>
+                        <td>
+                            <span class="status {% if scan.status == 'RUNNING' %}status-running{% elif scan.status == 'COMPLETED' or scan.status == 'DONE' %}status-done{% elif scan.status == 'FAILED' or scan.status == 'ERROR' %}status-failed{% else %}status-running{% endif %}">
+                                {{ scan.status }}
+                            </span>
+                        </td>
+                        <td>{{ scan.tag_count or '?' }}</td>
+                        <td>{{ scan.start_time }}</td>
+                        <td><a href="/scan/{{ scan.id }}">View Details</a></td>
+                    </tr>
+                {% else %}
+                    <tr><td colspan="6" class="empty-state"><p>No scans recorded yet.</p></td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </body>
 </html>

@@ -7,6 +7,7 @@ import os
 import json
 import sqlite3
 from datetime import datetime
+from typing import Optional
 
 class ScanHistory:
     def __init__(self, db_path: str = "~/.huntforge/history.db"):
@@ -15,40 +16,61 @@ class ScanHistory:
         self._init_db()
 
     def _init_db(self):
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS scans (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                domain TEXT NOT NULL,
-                start_time TEXT NOT NULL,
-                end_time TEXT,
-                status TEXT NOT NULL,
-                tag_count INTEGER,
-                output_dir TEXT
-            )
-        ''')
-        conn.commit()
-        conn.close()
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS scans (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    domain TEXT NOT NULL,
+                    start_time TEXT NOT NULL,
+                    end_time TEXT,
+                    status TEXT NOT NULL,
+                    tag_count INTEGER,
+                    output_dir TEXT
+                )
+            ''')
+            conn.commit()
 
     def record_start(self, domain: str, output_dir: str) -> int:
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute(
-            'INSERT INTO scans (domain, start_time, status, output_dir) VALUES (?, ?, ?, ?)',
-            (domain, datetime.utcnow().isoformat(), 'RUNNING', output_dir)
-        )
-        scan_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return scan_id
-        
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'INSERT INTO scans (domain, start_time, status, output_dir) VALUES (?, ?, ?, ?)',
+                (domain, datetime.utcnow().isoformat(), 'RUNNING', output_dir)
+            )
+            conn.commit()
+            if cursor.lastrowid is None:
+                raise RuntimeError("Failed to insert scan record")
+            return cursor.lastrowid
+
     def record_end(self, scan_id: int, status: str, tag_count: int):
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute(
-            'UPDATE scans SET end_time = ?, status = ?, tag_count = ? WHERE id = ?',
-            (datetime.utcnow().isoformat(), status, tag_count, scan_id)
-        )
-        conn.commit()
-        conn.close()
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                'UPDATE scans SET end_time = ?, status = ?, tag_count = ? WHERE id = ?',
+                (datetime.utcnow().isoformat(), status, tag_count, scan_id)
+            )
+            conn.commit()
+
+    def get_recent(self, limit: int = 50) -> list:
+        """Returns the most recent scans, newest first, up to `limit` rows."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT * FROM scans ORDER BY id DESC LIMIT ?',
+                (limit,)
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_scan(self, scan_id: int) -> Optional[dict]:
+        """Returns a single scan record by ID, or None if not found."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT * FROM scans WHERE id = ?',
+                (scan_id,)
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None

@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ filename }} - {{ scan.domain }} - HuntForge</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <a href="/scan/{{ scan.id }}" class="back-link">&larr; Back to {{ scan.domain }}</a>
+        <h1>{{ filename }}</h1>
+        <div class="card">
+            <div class="output-header">
+                <span>{{ scan.domain }} / {{ filename }}</span>
+            </div>
+            <pre><code>{{ content }}</code></pre>
+        </div>
+    </div>
+</body>
+</html>

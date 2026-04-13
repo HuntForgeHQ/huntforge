@@ -165,10 +165,42 @@ def run_scan(domain, methodology_path):
         console.print("\n[yellow]Scan interrupted by user[/yellow]")
         status = "INTERRUPTED"
 
-    except Exception as e:
+    except FileNotFoundError as e:
         console.print(
-            f"\n[red]Fatal error:[/red] {e}"
+            f"\n[red]Required binary not found:[/red] {e}\n"
+            "[yellow]Ensure all required tools are installed and on PATH.[/yellow]"
         )
+        status = "FAILED"
+
+    except ImportError as e:
+        console.print(
+            f"\n[red]Import error:[/red] {e}\n"
+            "[yellow]A required Python module is missing. Check that all dependencies are installed "
+            "(e.g. wappalyzer.py, python-dotenv, etc.).[/yellow]"
+        )
+        status = "FAILED"
+
+    except subprocess.CalledProcessError as e:
+        if "docker" in str(e).lower():
+            console.print(
+                "\n[red]Docker error:[/red] A container command failed.\n"
+                "[yellow]Is Docker running? Try 'docker info' to verify.[/yellow]"
+            )
+        else:
+            console.print(f"\n[red]Subprocess error:[/red] {e}")
+        status = "FAILED"
+
+    except Exception as e:
+        err_msg = str(e).lower()
+        if "docker" in err_msg and ("daemon" in err_msg or "connect" in err_msg):
+            console.print(
+                "\n[red]Docker does not appear to be running.[/red]\n"
+                "[yellow]Start Docker Desktop or the Docker daemon and try again.[/yellow]"
+            )
+        else:
+            console.print(
+                f"\n[red]Fatal error:[/red] {e}"
+            )
         status = "FAILED"
 
     finally:
@@ -218,6 +250,22 @@ def resume_scan(domain):
         console.print("[red]No checkpoint found. Start a new scan instead.[/red]")
         sys.exit(1)
 
+    try:
+        with open(checkpoint_file, "r") as f:
+            checkpoint_data = json.load(f)
+        saved_methodology = checkpoint_data.get("methodology_path")
+        if saved_methodology and saved_methodology != methodology_path:
+            console.print(
+                f"[yellow]Warning:[/yellow] Checkpoint was created with methodology "
+                f"'{saved_methodology}', but resuming with '{methodology_path}'. "
+                f"Results may be inconsistent."
+            )
+    except (json.JSONDecodeError, KeyError):
+        console.print(
+            "[yellow]Warning:[/yellow] Could not read methodology from checkpoint. "
+            "Proceeding with default methodology."
+        )
+
     history = ScanHistory()
     scan_id = history.record_start(domain, f"output/{domain}")
     status = "FAILED"
@@ -235,8 +283,40 @@ def resume_scan(domain):
         console.print("\n[yellow]Scan interrupted by user[/yellow]")
         status = "INTERRUPTED"
 
+    except FileNotFoundError as e:
+        console.print(
+            f"\n[red]Required binary not found:[/red] {e}\n"
+            "[yellow]Ensure all required tools are installed and on PATH.[/yellow]"
+        )
+        status = "FAILED"
+
+    except ImportError as e:
+        console.print(
+            f"\n[red]Import error:[/red] {e}\n"
+            "[yellow]A required Python module is missing. Check that all dependencies are installed "
+            "(e.g. wappalyzer.py, python-dotenv, etc.).[/yellow]"
+        )
+        status = "FAILED"
+
+    except subprocess.CalledProcessError as e:
+        if "docker" in str(e).lower():
+            console.print(
+                "\n[red]Docker error:[/red] A container command failed.\n"
+                "[yellow]Is Docker running? Try 'docker info' to verify.[/yellow]"
+            )
+        else:
+            console.print(f"\n[red]Subprocess error:[/red] {e}")
+        status = "FAILED"
+
     except Exception as e:
-        console.print(f"\n[red]Fatal error:[/red] {e}")
+        err_msg = str(e).lower()
+        if "docker" in err_msg and ("daemon" in err_msg or "connect" in err_msg):
+            console.print(
+                "\n[red]Docker does not appear to be running.[/red]\n"
+                "[yellow]Start Docker Desktop or the Docker daemon and try again.[/yellow]"
+            )
+        else:
+            console.print(f"\n[red]Fatal error:[/red] {e}")
         status = "FAILED"
 
     finally:
@@ -322,10 +402,17 @@ def main():
         console.print(
             f"[cyan]Starting HuntForge Dashboard on http://localhost:{args.port}[/cyan]"
         )
-        subprocess.run(
-            [sys.executable, "dashboard/app.py"],
-            env={**os.environ, "FLASK_RUN_PORT": str(args.port)},
+        dashboard_env = {**os.environ, "FLASK_RUN_PORT": str(args.port)}
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "flask", "run", "--host=0.0.0.0", f"--port={args.port}"],
+            cwd=os.path.join(os.path.dirname(__file__), "dashboard"),
+            env=dashboard_env,
         )
+        try:
+            proc.wait()
+        except KeyboardInterrupt:
+            proc.terminate()
+            console.print("\n[yellow]Dashboard stopped.[/yellow]")
 
 
 # --------------------------------------------------------

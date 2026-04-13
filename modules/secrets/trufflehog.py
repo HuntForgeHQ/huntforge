@@ -4,18 +4,19 @@ from core.exceptions import EmptyOutputError
 
 class TrufflehogModule(BaseModule):
     def build_command(self, target: str, container_out: str) -> list:
-        # trufflehog github --org target --json > file
-        return ['sh', '-c', f'trufflehog github --org={target} --json > {container_out}']
+        return ['trufflehog', 'github', '--org', target, '--json']
 
     def run(self, target: str, output_dir: str, tag_manager, config: dict = None) -> dict:
         self.config = config or {}
         
         host_out = os.path.join(output_dir, 'raw', 'trufflehog.json')
-        container_out = host_out.replace('\\', '/')
         os.makedirs(os.path.dirname(host_out), exist_ok=True)
         
         try:
-            self._run_subprocess(self.build_command(target, container_out), output_file=host_out)
+            stdout = self._run_subprocess(self.build_command(target, host_out.replace('\\', '/')), output_file=host_out)
+            if stdout and stdout.strip():
+                with open(host_out, 'w', encoding='utf-8') as f:
+                    f.write(stdout)
         except Exception as e:
             if 'exited with code 1' not in str(e): raise
             

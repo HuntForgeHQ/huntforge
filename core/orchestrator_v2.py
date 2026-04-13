@@ -22,13 +22,13 @@ import time
 import sys
 import signal
 import inspect
+import platform
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
 
 from loguru import logger
 
-# Import core components
 from core.tag_manager import TagManager
 from core.budget_tracker import BudgetTracker
 from core.scan_history import ScanHistory
@@ -38,7 +38,6 @@ from core.exceptions import (
     BinaryNotFoundError, ToolTimeoutError, ToolExecutionError
 )
 
-# Import new scheduler
 from core.resource_aware_scheduler import (
     AdaptiveScheduler,
     ToolProfiles,
@@ -147,9 +146,12 @@ class OrchestratorV2:
         with open(self.methodology_path) as f:
             self.methodology = yaml.safe_load(f)
 
+        budget_config = self.methodology.get('budget', {})
+        max_requests = budget_config.get('max_requests_total') if budget_config.get('enabled', True) else None
+
         # Initialize core components
         self.tag_manager = TagManager()
-        self.budget_tracker = BudgetTracker()
+        self.budget_tracker = BudgetTracker(max_requests=max_requests)
         self.scan_history = ScanHistory()
         self.logger = HFLogger(f"output/{domain}")
 
@@ -166,7 +168,8 @@ class OrchestratorV2:
 
         # Signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._handle_signal)
-        signal.signal(signal.SIGTERM, self._handle_signal)
+        if platform.system() != 'Windows':
+            signal.signal(signal.SIGTERM, self._handle_signal)
 
     def _handle_signal(self, signum, frame):
         """Handle shutdown signals gracefully"""
@@ -229,8 +232,11 @@ class OrchestratorV2:
 
     def run_phase(self, phase_name: str, phase_config: dict):
         """Execute a single phase with adaptive scheduling"""
-        logger.info(f"Starting phase: {phase_config.get('label', phase_name)}")
+        phase_label = phase_config.get('label', phase_name)
+        logger.info(f"Starting phase: {phase_label}")
         self.current_phase = phase_name
+
+        self.logger.phase_start(phase_name, phase_label)
 
         # Support both 'tools' (phases 1-4) and 'conditional_tools' (phases 5-7)
         tools = phase_config.get('tools') or phase_config.get('conditional_tools') or []
@@ -252,12 +258,12 @@ class OrchestratorV2:
             skip, reason = self.should_skip_tool(tool_config, tool_name)
             if skip:
                 logger.info(f"Skipping {tool_name}: {reason}")
-                if tool_name in TOOL_REGISTRY:
-                    self.logger.tool_skipped(tool_name, reason)
+                self.logger.tool_skipped(tool_name, reason)
                 continue
 
             if tool_name not in TOOL_REGISTRY:
                 logger.warning(f"Tool {tool_name} not in registry, skipping")
+                self.logger.tool_skipped(tool_name, "Not in tool registry")
                 continue
 
             tools_to_run.append({
@@ -268,60 +274,40 @@ class OrchestratorV2:
 
         logger.info(f"Phase {phase_name}: {len(tools_to_run)} tools to execute")
 
-        # Adaptive scheduling loop
+        # Sequential scheduling loop — tools run synchronously, one at a time
         completed = 0
         total = len(tools_to_run)
 
-        while tools_to_run and not self._shutdown:
-            # Check if we can start another tool
-            current_concurrent = len(self.scheduler.get_running_tools())
-            capacity = self.resource_monitor.get_capacity()
+        for tool_info in tools_to_run:
+            if self._shutdown:
+                break
 
-            # Try to get next tool that fits
-            tool_to_start = None
-            best_decision = None
+            tool_name = tool_info['name']
+            tool_config = tool_info.get('config', {})
 
-            for i, tool_info in enumerate(tools_to_run):
-                decision = self.scheduler.can_schedule(
-                    tool_info['name'],
-                    phase_name,
-                    current_concurrent,
-                    tool_info.get('config', {})
+            # Pre-check: can the scheduler fit this tool?
+            decision = self.scheduler.can_schedule(
+                tool_name,
+                phase_name,
+                0,
+                tool_config
+            )
+
+            if decision.action == 'wait':
+                logger.warning(
+                    f"Insufficient resources for {tool_name}: {decision.reason} — "
+                    f"running with scaled parameters"
                 )
+                if decision.suggested_parameters:
+                    tool_config.update(decision.suggested_parameters)
+            elif decision.action == 'run' and decision.suggested_parameters:
+                tool_config.update(decision.suggested_parameters)
 
-                if decision.action == 'run':
-                    tool_to_start = tool_info
-                    best_decision = decision
-                    tools_to_run.pop(i)
-                    break
-                elif decision.action == 'wait' and not tool_to_start:
-                    best_decision = decision
+            logger.info(f"Starting {tool_name} (params: {decision.suggested_parameters or 'default'})")
+            self._run_tool(tool_name, tool_info['_class'], tool_config, phase_config)
+            completed += 1
 
-            if tool_to_start and best_decision:
-                # Start the tool
-                tool_name = tool_to_start['name']
-                tool_class = tool_to_start['_class']
-                tool_config = tool_to_start['config']
-
-                # Merge scheduler-suggested parameters if any
-                if best_decision.suggested_parameters:
-                    tool_config.update(best_decision.suggested_parameters)
-
-                logger.info(f"Starting {tool_name} (params: {best_decision.suggested_parameters or 'default'})")
-                self._run_tool(tool_name, tool_class, tool_config, phase_config)
-                completed += 1
-            else:
-                # Wait for resources or tool completion
-                if best_decision:
-                    logger.debug(f"Waiting: {best_decision.reason}")
-
-                # Check for critical conditions
-                capacity = self.resource_monitor.get_capacity()
-                if capacity.pressure_level == 'critical':
-                    logger.warning("System under critical pressure, pausing new tools...")
-
-                time.sleep(5)
-
+        self.logger.phase_end(phase_name)
         logger.info(f"Phase {phase_name} complete: {completed}/{total} tools executed")
 
     def _run_tool(self, tool_name: str, tool_class, tool_config: dict, phase_config: dict):
@@ -332,6 +318,21 @@ class OrchestratorV2:
             # Instantiate tool
             tool = tool_class()
             tool.tag_manager = self.tag_manager
+
+            # Budget gate: check if we can afford this tool
+            try:
+                estimated = tool.estimated_requests()
+                if not self.budget_tracker.within_limits(estimated):
+                    logger.warning(
+                        f"Budget would be exceeded by {tool_name} "
+                        f"(estimated {estimated} requests) — skipping"
+                    )
+                    self.logger.tool_skipped(tool_name, "Request budget would be exceeded")
+                    return
+            except BudgetExceededError as e:
+                logger.warning(f"Budget already exceeded — skipping {tool_name}: {e}")
+                self.logger.tool_skipped(tool_name, str(e))
+                return
 
             # Build resource estimate for scheduler
             estimate = self.tool_profiles.estimate_tool_resources(
@@ -370,6 +371,12 @@ class OrchestratorV2:
                 **filtered_input
             )
 
+            # Track actual requests used
+            if isinstance(result, dict):
+                requests_made = result.get('requests_made', 0)
+                if requests_made:
+                    self.budget_tracker.add_requests(requests_made)
+
             # Record completion
             elapsed = time.time() - start_time
             self.logger.tool_complete(tool_name, result, elapsed)
@@ -388,8 +395,6 @@ class OrchestratorV2:
             # Auto-emit any tags explicitly declared in the API methodology config
             explicit_tags = tool_config.get('tags_emitted', [])
             if isinstance(explicit_tags, list):
-                # Ensure we only emit tags if the tool succeeded and returned something
-                # We do a basic check here. If result is empty dict, we might not want to emit
                 found_something = True
                 if isinstance(result, dict):
                     count = result.get('count', 1)
@@ -454,10 +459,6 @@ class OrchestratorV2:
         logger.info(f"Starting HuntForge scan for {self.domain}")
         self.scan_start_time = time.time()
 
-        # Record scan start in history DB for dashboard
-        output_dir = f"output/{self.domain}"
-        self.scan_id = self.scan_history.record_start(self.domain, os.path.abspath(output_dir))
-
         # Try to resume from checkpoint
         if self.checkpoint_file:
             self.load_checkpoint()
@@ -507,12 +508,11 @@ class OrchestratorV2:
         elapsed = time.time() - self.scan_start_time
         logger.success(f"Scan completed in {elapsed/3600:.1f} hours")
 
+        # Save budget status before final checkpoint
+        self.budget_tracker.save_to_file(f"output/{self.domain}")
+
         # Final checkpoint
         self.save_checkpoint()
-
-        # Record scan completion in history DB for dashboard
-        tag_count = len(self.tag_manager.tags) if hasattr(self.tag_manager, 'tags') else 0
-        self.scan_history.record_end(self.scan_id, 'COMPLETED', tag_count)
 
         # Generate summary files
         self._generate_summary()

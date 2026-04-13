@@ -5,7 +5,7 @@ from core.exceptions import EmptyOutputError
 
 class NucleiModule(BaseModule):
     def build_command(self, target: str, container_out: str) -> list:
-        cmd = ['nuclei', '-target', target, '-json-export', container_out, '-silent']
+        cmd = ['nuclei', '-u', target, '-json-export', container_out, '-silent']
         
         severity = self._cfg('severity')
         if severity:

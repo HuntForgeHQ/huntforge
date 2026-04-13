@@ -165,7 +165,7 @@ class BaseModule:
         timeout_seconds = self._cfg('timeout', default=300)
 
         # WAF Evasion Injection
-        if hasattr(self, 'tag_manager') and self.tag_manager and self.tag_manager.has('has_waf'):
+        if hasattr(self, 'tag_manager') and self.tag_manager and self.tag_manager.has('has_waf', min_confidence='high'):
             import random
             user_agents = [
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -263,7 +263,8 @@ class BaseModule:
                 tool=self.__class__.__name__
             )
 
-        content = open(host_filepath, 'r', encoding='utf-8').read().strip()
+        with open(host_filepath, 'r', encoding='utf-8') as f:
+            content = f.read().strip()
 
         if not content:
             raise EmptyOutputError(
@@ -276,7 +277,27 @@ class BaseModule:
     def _cfg(self, key: str, default=None):
         """
         Safely read a value from self.config dict.
+        Supports dot-notation for nested keys, e.g. _cfg('extra_args.threads').
         """
         if not hasattr(self, 'config') or self.config is None:
             return default
-        return self.config.get(key, default)
+        if '.' not in key:
+            return self.config.get(key, default)
+        keys = key.split('.')
+        value = self.config
+        for k in keys:
+            if isinstance(value, dict) and k in value:
+                value = value[k]
+            else:
+                return default
+        return value
+
+    def _to_container_path(self, host_path: str) -> str:
+        """
+        Convert a host filesystem path to a path usable inside the Docker container.
+
+        Replaces Windows backslashes with forward slashes. Full container path
+        mapping (e.g. C:\\Users\\... -> /output/...) requires knowing the mount
+        point, which is left to the caller or a future override.
+        """
+        return host_path.replace('\\', '/')

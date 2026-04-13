@@ -4,8 +4,11 @@
 #                  Fails the execution if budget is exceeded.
 # ------------------------------------------------------------
 
+import json
+import os
 import time
 from datetime import datetime
+from typing import Optional
 from core.exceptions import BudgetExceededError
 
 class BudgetTracker:
@@ -13,10 +16,10 @@ class BudgetTracker:
     Tracks execution time and HTTP request budget during a scan.
     """
 
-    def __init__(self, max_requests: int = None, max_time_minutes: int = None):
+    def __init__(self, max_requests: Optional[int] = None, max_time_minutes: Optional[int] = None):
         self.max_requests = max_requests
         self.max_time_minutes = max_time_minutes
-        
+
         self.requests_used = 0
         self.start_time = time.time()
 
@@ -29,7 +32,7 @@ class BudgetTracker:
         """
         Check if we are within budget and can afford the estimated_requests.
         Called by Orchestrator Gate 2.
-        
+
         Returns True if within budget, False if adding estimated_requests would blow it.
         Or throws BudgetExceededError if already blown.
         """
@@ -47,7 +50,7 @@ class BudgetTracker:
                 raise BudgetExceededError(
                     f"Scan request budget exhausted: {self.requests_used}/{self.max_requests} requests used."
                 )
-            
+
             # Check if this tool would blow the budget
             if self.requests_used + estimated_requests > self.max_requests:
                 return False
@@ -65,6 +68,34 @@ class BudgetTracker:
             "time_budget_remaining_mins": self.max_time_minutes - elapsed_mins if self.max_time_minutes else None,
             "request_budget_remaining": self.max_requests - self.requests_used if self.max_requests else None
         }
+
+    def get_status(self) -> dict:
+        """Returns a dashboard-friendly status dict."""
+        elapsed_seconds = time.time() - self.start_time
+        remaining = (self.max_requests - self.requests_used) if self.max_requests else None
+        percent_used = (self.requests_used / self.max_requests * 100) if self.max_requests else None
+        return {
+            "requests_made": self.requests_used,
+            "max_requests": self.max_requests,
+            "remaining_requests": remaining,
+            "elapsed_seconds": round(elapsed_seconds, 2),
+            "percent_used": round(percent_used, 2) if percent_used is not None else None,
+        }
+
+    def save_to_file(self, output_dir: str):
+        """Writes budget status to output/<domain>/processed/budget_status.json."""
+        processed_dir = os.path.join(output_dir, "processed")
+        os.makedirs(processed_dir, exist_ok=True)
+        path = os.path.join(processed_dir, "budget_status.json")
+        status = self.get_status()
+        status["timestamp"] = datetime.utcnow().isoformat()
+        with open(path, "w") as f:
+            json.dump(status, f, indent=2)
+
+    def reset(self):
+        """Resets request count and timer for resuming scans."""
+        self.requests_used = 0
+        self.start_time = time.time()
 
     def __repr__(self) -> str:
         s = f"BudgetTracker(requests: {self.requests_used}"

@@ -7,7 +7,7 @@
 
 import os
 import time
-import signal
+
 import threading
 import subprocess
 from typing import Optional, List, Dict, Any
@@ -114,10 +114,11 @@ class SmartTimeoutV2:
                 if not possible_files:
                     logger.error(f"[{self.tool_name}] No target URL or input file provided.")
                     return False
-                for f in possible_files:
-                    if not os.path.exists(f) or os.path.getsize(f) == 0:
-                        logger.error(f"[{self.tool_name}] Input file {f} is missing or empty.")
-                        return False
+                if not self.is_docker:
+                    for f in possible_files:
+                        if not os.path.exists(f) or os.path.getsize(f) == 0:
+                            logger.error(f"[{self.tool_name}] Input file {f} is missing or empty.")
+                            return False
 
         return True
 
@@ -236,11 +237,23 @@ class SmartTimeoutV2:
     def _check_activity(self) -> bool:
         """
         Determines if the process is "active" based on multiple signals.
+        
+        In Docker mode (is_docker=True), CPU/IO metrics reflect the thin
+        ``docker exec`` wrapper on the host, not the actual workload inside
+        the container.  Output-file growth is therefore treated as the
+        primary signal: any growth at all is sufficient to extend.  CPU/IO
+        deltas are still consulted as a weaker secondary signal.
         """
-        if self._has_new_output():
+        has_output = self._has_new_output()
+        
+        if self.is_docker and has_output:
             self._update_metrics()
             return True
-        
+
+        if has_output:
+            self._update_metrics()
+            return True
+
         # Check CPU / IO delta
         try:
             curr_cpu = self._get_total_cpu_time(self._ps_proc)
@@ -250,28 +263,27 @@ class SmartTimeoutV2:
             io_delta_read = curr_io.read_bytes - self._last_io_counters.read_bytes
             io_delta_write = curr_io.write_bytes - self._last_io_counters.write_bytes
             
-            # Save for next check
             self._last_cpu_time = curr_cpu
             self._last_io_counters = curr_io
 
-            # Log metrics for debugging
             logger.debug(f"[{self.tool_name}] Activity check: CPU Delta={cpu_delta:.3f}, IO Delta (R/W)={io_delta_read}/{io_delta_write}")
 
-            if cpu_delta > self.activity_threshold_cpu:
-                return True
-            if (io_delta_read + io_delta_write) > self.activity_threshold_bytes:
-                return True
-                
-            # Check children if this is a parent process
-            for child in self._ps_proc.children(recursive=True):
-                try:
-                    c_cpu = self._get_total_cpu_time(child)
-                    if c_cpu > 0: # Any activity from children counts
-                        # We don't track deltas for all children individually, 
-                        # but if any child is using CPU, the job is alive.
-                        return True
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    continue
+            if not self.is_docker:
+                if cpu_delta > self.activity_threshold_cpu:
+                    return True
+                if (io_delta_read + io_delta_write) > self.activity_threshold_bytes:
+                    return True
+                    
+                for child in self._ps_proc.children(recursive=True):
+                    try:
+                        c_cpu = self._get_total_cpu_time(child)
+                        if c_cpu > 0:
+                            return True
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        continue
+            else:
+                if cpu_delta > 0 or (io_delta_read + io_delta_write) > 0:
+                    return True
 
         except (psutil.NoSuchProcess, psutil.AccessDenied, AttributeError):
             pass
@@ -291,7 +303,10 @@ class SmartTimeoutV2:
 
     def _terminate_gracefully(self):
         """
-        Implements SIGTERM -> Wait -> SIGKILL.
+        Gracefully shuts down the process and its children.
+        Uses psutil Process.terminate() (SIGTERM on POSIX, TerminateProcess on Windows)
+        followed by a wait period, then psutil Process.kill() (SIGKILL on POSIX,
+        TerminateProcess on Windows) for any survivors.
         Ensures child processes are also cleaned up.
         """
         if not self._process or self._process.poll() is not None:
@@ -300,7 +315,7 @@ class SmartTimeoutV2:
         logger.info(f"SmartTimeoutV2: Attempting graceful shutdown for {self.tool_name} (pid {self._process.pid})")
         
         try:
-            # 1. SIGTERM (Terminate)
+            # 1. Graceful terminate (SIGTERM on POSIX, TerminateProcess on Windows)
             parent = psutil.Process(self._process.pid)
             children = parent.children(recursive=True)
             
@@ -311,10 +326,10 @@ class SmartTimeoutV2:
                 except psutil.NoSuchProcess:
                     continue
             
-            # 2. Wait
+            # 2. Wait for processes to exit
             gone, alive = psutil.wait_procs([parent] + children, timeout=5)
             
-            # 3. SIGKILL (Kill remaining)
+            # 3. Force kill any survivors (SIGKILL on POSIX, TerminateProcess on Windows)
             for p in alive:
                 logger.warning(f"SmartTimeoutV2: Process {p.pid} refused to exit, killing.")
                 try:

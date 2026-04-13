@@ -2,42 +2,61 @@
 <html>
 <head>
     <title>{{ scan.domain }} - HuntForge</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 2rem; background: #0f172a; color: #f8fafc; }
-        h1 { color: #38bdf8; }
-        .card { background: #1e293b; padding: 1.5rem; border-radius: 8px; margin-bottom: 1rem; }
-        .tag-high { border-left: 4px solid #ef4444; }
-        .tag-medium { border-left: 4px solid #fbbf24; }
-        .tag-low { border-left: 4px solid #3b82f6; }
-        .tag-item { padding: 1rem; margin-bottom: 0.5rem; background: #0f172a; border-radius: 4px; }
-        a { color: #cbd5e1; text-decoration: none; }
-        a:hover { color: #fff; }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <a href="/">&larr; Back to Dashboard</a>
-    <h1>Scan Report: {{ scan.domain }}</h1>
-    
-    <div class="card">
-        <h2>Budget & Resources</h2>
-        <p><strong>Status:</strong> {{ scan.status }}</p>
-        <p><strong>Requests Used:</strong> {{ budget.get('requests_used', 0) }} / {{ budget.get('max_requests', 'unlimited') }}</p>
-        <p><strong>Time Elapsed:</strong> {{ budget.get('elapsed_minutes', 0) }}m</p>
-        <p><strong>Output Directory:</strong> <code>{{ scan.output_dir }}</code></p>
-    </div>
+    <div class="container">
+        <a href="/" class="back-link">&larr; Back to Dashboard</a>
 
-    <div class="card">
-        <h2>Intelligence Graph (Active Tags)</h2>
-        {% if tags %}
-            {% for tag, data in tags.items() %}
-            <div class="tag-item tag-{{ data.confidence }}">
-                <strong>{{ tag }}</strong> 
-                <span style="color: #94a3b8; font-size: 0.9em; margin-left: 10px;">Confidence: {{ data.confidence }}</span>
-                <span style="color: #94a3b8; font-size: 0.9em; margin-left: 10px;">Added by: {{ data.source }}</span>
+        {% if not scan %}
+        <div class="card">
+            <div class="empty-state">
+                <p>Scan not found.</p>
             </div>
-            {% endfor %}
+        </div>
         {% else %}
-            <p>No tags collected yet.</p>
+        <h1>Scan Report: {{ scan.domain }}</h1>
+
+        <div class="card">
+            <h2>Budget &amp; Resources</h2>
+            <div class="budget-grid">
+                <div class="budget-item">
+                    <div class="budget-label">Status</div>
+                    <div class="budget-value">
+                        <span class="status {% if scan.status == 'RUNNING' %}status-running{% elif scan.status == 'COMPLETED' or scan.status == 'DONE' %}status-done{% elif scan.status == 'FAILED' or scan.status == 'ERROR' %}status-failed{% else %}status-running{% endif %}">
+                            {{ scan.status }}
+                        </span>
+                    </div>
+                </div>
+                <div class="budget-item">
+                    <div class="budget-label">Requests Used</div>
+                    <div class="budget-value">{{ budget.get('requests_used', 0) }} / {{ budget.get('max_requests', 'unlimited') }}</div>
+                </div>
+                <div class="budget-item">
+                    <div class="budget-label">Time Elapsed</div>
+                    <div class="budget-value">{{ budget.get('elapsed_minutes', 0) }}m</div>
+                </div>
+                <div class="budget-item">
+                    <div class="budget-label">Output Directory</div>
+                    <div class="budget-value"><code>{{ scan.output_dir }}</code></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Intelligence Graph (Active Tags)</h2>
+            {% if tags %}
+                {% for tag, data in tags.items() %}
+                <div class="tag-item tag-{{ data.confidence }}">
+                    <span class="tag-name">{{ tag }}</span>
+                    <span class="tag-badge tag-badge-{{ data.confidence }}">{{ data.confidence }}</span>
+                    <span class="tag-meta">Source: {{ data.source }}</span>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="empty-state"><p>No tags collected yet.</p></div>
+            {% endif %}
+        </div>
         {% endif %}
     </div>
 </body>

@@ -219,10 +219,11 @@ class ResourceMonitor:
         self._thread = None
         self._current_capacity: Optional[SystemCapacity] = None
         self._lock = threading.Lock()
-        self._start_monitoring()
 
-    def _start_monitoring(self):
+    def start(self):
         """Start background monitoring thread"""
+        if self._running:
+            return
         self._running = True
         self._thread = threading.Thread(target=self._monitor_loop, daemon=True)
         self._thread.start()
@@ -243,7 +244,12 @@ class ResourceMonitor:
         """Take a snapshot of current system state"""
         mem = psutil.virtual_memory()
         cpu_percent = psutil.cpu_percent(interval=0.1)
-        load_avg = os.getloadavg()[0] if hasattr(os, 'getloadavg') else cpu_percent / 100
+        cpu_cores = psutil.cpu_count(logical=True) or 1
+
+        if hasattr(os, 'getloadavg'):
+            load_avg = os.getloadavg()[0]
+        else:
+            load_avg = cpu_percent / 100.0 * cpu_cores
 
         swap = psutil.swap_memory()
 
@@ -253,7 +259,7 @@ class ResourceMonitor:
         return SystemCapacity(
             total_ram_gb=mem.total / (1024**3),
             available_ram_gb=mem.available / (1024**3),
-            total_cpu_cores=psutil.cpu_count(logical=True),
+            total_cpu_cores=cpu_cores,
             cpu_percent=cpu_percent,
             load_avg_1min=load_avg,
             swap_used_percent=swap.percent,
@@ -263,13 +269,15 @@ class ResourceMonitor:
     def _check_user_activity(self) -> bool:
         """Check if user is actively using the system"""
         try:
-            # Linux: check run queue length and interactive processes
             if sys.platform.startswith('linux'):
-                # If load avg is significantly higher than CPU count, system is busy
-                load = os.getloadavg()[0]
-                cores = psutil.cpu_count()
-                if load > cores * 0.8:
-                    return True
+                cores = psutil.cpu_count() or 1
+                if hasattr(os, 'getloadavg'):
+                    load = os.getloadavg()[0]
+                    if load > cores * 0.8:
+                        return True
+                else:
+                    if psutil.cpu_percent(interval=0.5) > 70:
+                        return True
 
                 # Check for GUI processes (Firefox, VS Code, etc.)
                 for proc in psutil.process_iter(['name']):
@@ -282,14 +290,16 @@ class ResourceMonitor:
                         except:
                             pass
 
-            # macOS check
             elif sys.platform == 'darwin':
-                load = os.getloadavg()[0]
-                cores = psutil.cpu_count()
-                if load > cores * 0.8:
-                    return True
+                cores = psutil.cpu_count() or 1
+                if hasattr(os, 'getloadavg'):
+                    load = os.getloadavg()[0]
+                    if load > cores * 0.8:
+                        return True
+                else:
+                    if psutil.cpu_percent(interval=0.5) > 70:
+                        return True
 
-            # Windows check
             elif sys.platform == 'win32':
                 cpu = psutil.cpu_percent(interval=0.5)
                 if cpu > 70:
@@ -584,6 +594,7 @@ def create_scheduler() -> AdaptiveScheduler:
     """Factory function to create scheduler with default components"""
     profiles = ToolProfiles()
     monitor = ResourceMonitor()
+    monitor.start()
     return AdaptiveScheduler(profiles, monitor)
 
 
@@ -597,6 +608,7 @@ if __name__ == "__main__":
     print("Testing Adaptive Scheduler...")
 
     monitor = ResourceMonitor()
+    monitor.start()
     profiles = ToolProfiles()
     scheduler = AdaptiveScheduler(profiles, monitor)
 
