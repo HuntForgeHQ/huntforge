@@ -13,7 +13,7 @@ class KatanaModule(BaseModule):
         self.config = config or {}
 
         host_out = os.path.join(output_dir, 'raw', 'katana.txt')
-        container_out = host_out.replace('\\', '/')
+        container_out = self._to_container_path(host_out)
         os.makedirs(os.path.dirname(host_out), exist_ok=True)
 
         # Prefer live_hosts_txt (plain text, one URL per line) over live_hosts (JSON)
@@ -33,7 +33,7 @@ class KatanaModule(BaseModule):
                 pass
 
         if input_file:
-            container_input = input_file.replace('\\', '/')
+            container_input = self._to_container_path(input_file)
             cmd = ['katana', '-list', container_input, '-o', container_out, '-silent', '-jc', '-kf', 'all', '-d', '3']
         else:
             cmd = self.build_command(target, container_out)

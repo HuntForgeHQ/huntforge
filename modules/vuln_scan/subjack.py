@@ -15,13 +15,13 @@ class SubjackModule(BaseModule):
         if not os.path.exists(host_input_file):
             host_input_file = os.path.join(output_dir, 'raw', 'subfinder.txt')
             
-        container_input_file = host_input_file.replace('\\', '/')
+        container_input_file = self._to_container_path(host_input_file)
         
         if not os.path.exists(host_input_file):
             return {'results': [], 'count': 0, 'requests_made': 0}
             
         host_output_file = os.path.join(output_dir, 'raw', 'subjack.txt')
-        container_output_file = host_output_file.replace('\\', '/')
+        container_output_file = self._to_container_path(host_output_file)
         os.makedirs(os.path.dirname(host_output_file), exist_ok=True)
 
         command = self.build_command(target, container_output_file)
@@ -31,7 +31,9 @@ class SubjackModule(BaseModule):
 
         try:
             content = self._read_output_file(host_output_file)
-            vulns = [line.strip() for line in content.splitlines() if line.strip()]
+            all_lines = [line.strip() for line in content.splitlines() if line.strip()]
+            # CRITICAL: Filter out "[Not Vulnerable]" entries — those are NOT findings
+            vulns = [line for line in all_lines if '[Not Vulnerable]' not in line and line]
         except EmptyOutputError:
             vulns = []
 
@@ -43,7 +45,8 @@ class SubjackModule(BaseModule):
 
     def emit_tags(self, result: dict, tag_manager) -> None:
         if result['count'] > 0:
-            tag_manager.add('has_subdomain_takeover', confidence='high', source='subjack')
+            tag_manager.add('has_subdomain_takeover', confidence='high',
+                            evidence=result['results'][:5], source='subjack')
             tag_manager.add('has_vulnerabilities', confidence='high', source='subjack')
 
     def estimated_requests(self) -> int:

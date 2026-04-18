@@ -26,6 +26,8 @@ import platform
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
+import concurrent.futures
+import threading
 
 from loguru import logger
 
@@ -136,9 +138,12 @@ class OrchestratorV2:
     """
 
     def __init__(self, domain: str, methodology_path: str,
-                 checkpoint_file: Optional[str] = None, adaptive: bool = True):
+                 checkpoint_file: Optional[str] = None, adaptive: bool = True,
+                 only_phase: Optional[str] = None, override_input_file: Optional[str] = None):
         self.domain = domain
         self.adaptive = adaptive
+        self.only_phase = only_phase
+        self.override_input_file = override_input_file
         self.methodology_path = Path(methodology_path)
         self.checkpoint_file = checkpoint_file or f"output/{domain}/checkpoint.json"
 
@@ -165,6 +170,7 @@ class OrchestratorV2:
         self.current_phase = None
         self.scan_start_time = None
         self._shutdown = False
+        self.lock = threading.Lock()
 
         # Signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._handle_signal)
@@ -186,6 +192,14 @@ class OrchestratorV2:
 
                 self.completed_tools = data.get('completed_tools', [])
                 self.tag_manager.tags = data.get('tags', {})
+                
+                # Restore budget state
+                budget_data = data.get('budget')
+                if budget_data:
+                    self.budget_tracker.requests_used = budget_data.get('requests_used', 0)
+                    self.budget_tracker.start_time = budget_data.get('start_time', time.time())
+                    logger.info(f"Restored budget: {self.budget_tracker.requests_used} requests already counted")
+
                 logger.info(f"Resumed from checkpoint: {len(self.completed_tools)} tools already completed")
                 return True
             except Exception as e:
@@ -197,13 +211,18 @@ class OrchestratorV2:
         checkpoint_dir = Path(self.checkpoint_file).parent
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-        data = {
-            'domain': self.domain,
-            'phase': self.current_phase,
-            'completed_tools': self.completed_tools,
-            'tags': self.tag_manager.tags,
-            'timestamp': datetime.utcnow().isoformat() + 'Z'
-        }
+        with self.lock:
+            data = {
+                'domain': self.domain,
+                'phase': self.current_phase,
+                'completed_tools': list(self.completed_tools),
+                'tags': self.tag_manager.get_all(),
+                'budget': {
+                    'requests_used': self.budget_tracker.requests_used,
+                    'start_time': self.budget_tracker.start_time
+                },
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            }
 
         try:
             with open(self.checkpoint_file, 'w') as f:
@@ -274,41 +293,66 @@ class OrchestratorV2:
 
         logger.info(f"Phase {phase_name}: {len(tools_to_run)} tools to execute")
 
-        # Sequential scheduling loop — tools run synchronously, one at a time
+        # Concurrent scheduling loop — tools run in parallel threads managed by scheduler
         completed = 0
+        failed = 0
         total = len(tools_to_run)
 
-        for tool_info in tools_to_run:
+        def _tool_worker(tool_info):
             if self._shutdown:
-                break
+                return 'skipped'
 
             tool_name = tool_info['name']
             tool_config = tool_info.get('config', {})
 
-            # Pre-check: can the scheduler fit this tool?
-            decision = self.scheduler.can_schedule(
-                tool_name,
-                phase_name,
-                0,
-                tool_config
-            )
-
-            if decision.action == 'wait':
-                logger.warning(
-                    f"Insufficient resources for {tool_name}: {decision.reason} — "
-                    f"running with scaled parameters"
+            # Scheduler blocks or limits concurrency natively inside this block
+            try:
+                decision = self.scheduler.can_schedule(
+                    tool_name,
+                    phase_name,
+                    0,
+                    tool_config
                 )
-                if decision.suggested_parameters:
-                    tool_config.update(decision.suggested_parameters)
-            elif decision.action == 'run' and decision.suggested_parameters:
-                tool_config.update(decision.suggested_parameters)
 
-            logger.info(f"Starting {tool_name} (params: {decision.suggested_parameters or 'default'})")
-            self._run_tool(tool_name, tool_info['_class'], tool_config, phase_config)
-            completed += 1
+                if decision.action == 'wait':
+                    logger.warning(
+                        f"Insufficient resources for {tool_name}: {decision.reason} — "
+                        f"running with scaled parameters"
+                    )
+                    if decision.suggested_parameters:
+                        tool_config.update(decision.suggested_parameters)
+                elif decision.action == 'run' and decision.suggested_parameters:
+                    tool_config.update(decision.suggested_parameters)
+
+                logger.info(f"Starting {tool_name} (params: {decision.suggested_parameters or 'default'})")
+                self._run_tool(tool_name, tool_info['_class'], tool_config, phase_config)
+                return 'success'
+            except Exception as e:
+                logger.error(f"Worker thread for {tool_name} failed: {e}")
+                return 'failed'
+
+        # Cap concurrency: max 3 tools simultaneously to respect the 3GB RAM limit
+        max_workers = min(total, 3) if total > 0 else 1
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(_tool_worker, t_info): t_info['name']
+                for t_info in tools_to_run
+            }
+            for future in concurrent.futures.as_completed(futures):
+                tool_name = futures[future]
+                try:
+                    result = future.result()
+                    if result == 'success':
+                        completed += 1
+                    elif result == 'failed':
+                        failed += 1
+                except Exception as e:
+                    logger.error(f"Unhandled exception in worker for {tool_name}: {e}")
+                    failed += 1
 
         self.logger.phase_end(phase_name)
-        logger.info(f"Phase {phase_name} complete: {completed}/{total} tools executed")
+        logger.info(f"Phase {phase_name} complete: {completed}/{total} tools executed ({failed} failed)")
 
     def _run_tool(self, tool_name: str, tool_class, tool_config: dict, phase_config: dict):
         """Execute a single tool with monitoring"""
@@ -320,19 +364,26 @@ class OrchestratorV2:
             tool.tag_manager = self.tag_manager
 
             # Budget gate: check if we can afford this tool
+            budget_cfg = self.methodology.get('budget', {})
+            action = budget_cfg.get('action_on_exceeded', 'abort')
+
             try:
                 estimated = tool.estimated_requests()
                 if not self.budget_tracker.within_limits(estimated):
-                    logger.warning(
-                        f"Budget would be exceeded by {tool_name} "
-                        f"(estimated {estimated} requests) — skipping"
-                    )
-                    self.logger.tool_skipped(tool_name, "Request budget would be exceeded")
-                    return
+                    msg = f"Budget would be exceeded by {tool_name} (estimated {estimated} requests)"
+                    if action == 'warn':
+                        logger.warning(f"{msg} — proceeding anyway (action=warn)")
+                    else:
+                        logger.warning(f"{msg} — skipping")
+                        self.logger.tool_skipped(tool_name, "Request budget would be exceeded")
+                        return
             except BudgetExceededError as e:
-                logger.warning(f"Budget already exceeded — skipping {tool_name}: {e}")
-                self.logger.tool_skipped(tool_name, str(e))
-                return
+                if action == 'warn':
+                    logger.warning(f"Budget already exceeded — proceeding anyway (action=warn): {e}")
+                else:
+                    logger.warning(f"Budget already exceeded — skipping {tool_name}: {e}")
+                    self.logger.tool_skipped(tool_name, str(e))
+                    return
 
             # Build resource estimate for scheduler
             estimate = self.tool_profiles.estimate_tool_resources(
@@ -410,13 +461,14 @@ class OrchestratorV2:
                         self.tag_manager.add(t, source='methodology_engine')
 
             # Record in history
-            self.completed_tools.append({
-                'tool': tool_name,
-                'phase': self.current_phase,
-                'start_time': start_time,
-                'elapsed_seconds': elapsed,
-                'status': 'completed'
-            })
+            with self.lock:
+                self.completed_tools.append({
+                    'tool': tool_name,
+                    'phase': self.current_phase,
+                    'start_time': start_time,
+                    'elapsed_seconds': elapsed,
+                    'status': 'completed'
+                })
 
             # Save checkpoint
             self.save_checkpoint()
@@ -430,24 +482,30 @@ class OrchestratorV2:
             self.logger.tool_error(tool_name, e)
 
             # Record failure so we don't retry
-            self.completed_tools.append({
-                'tool': tool_name,
-                'phase': self.current_phase,
-                'start_time': start_time,
-                'elapsed_seconds': time.time() - start_time,
-                'status': 'failed',
-                'error': str(e)
-            })
+            with self.lock:
+                self.completed_tools.append({
+                    'tool': tool_name,
+                    'phase': self.current_phase,
+                    'start_time': start_time,
+                    'elapsed_seconds': time.time() - start_time,
+                    'status': 'failed',
+                    'error': str(e)
+                })
             self.save_checkpoint()
 
         finally:
+            self.budget_tracker.save_to_file(f"output/{self.domain}")
             self.scheduler.register_tool_end(tool_name)
 
     def _resolve_input_files(self, phase_config: dict) -> dict:
         """Resolve input file paths from processed directory"""
         input_mapping = {}
         for key, rel_path in phase_config.get('input_files', {}).items():
-            full_path = Path(f"output/{self.domain}/{rel_path}")
+            if self.override_input_file and key in ['all_urls', 'parameters', 'discovered_paths']:
+                full_path = Path(self.override_input_file)
+            else:
+                full_path = Path(f"output/{self.domain}/{rel_path}")
+                
             if full_path.exists():
                 input_mapping[key] = str(full_path)
             else:
@@ -472,8 +530,8 @@ class OrchestratorV2:
                 logger.warning("Shutdown requested, stopping")
                 break
 
-            # PHASE 7 SPECIAL HANDLING — human decision point
-            if phase_name == 'phase_7_vuln_scan':
+            # PHASE 7 SPECIAL HANDLING — human decision point ONLY for standard runs
+            if phase_name == 'phase_7_vuln_scan' and not self.only_phase:
                 logger.info("Phase 6 complete. Recon is done.")
                 self._display_recon_summary()
 
@@ -485,6 +543,9 @@ class OrchestratorV2:
                 if response != 'y':
                     logger.info("Skipping Phase 7. Scan complete.")
                     break
+
+            if self.only_phase and phase_name != self.only_phase:
+                continue
 
             self.run_phase(phase_name, phase_config)
 
@@ -707,6 +768,47 @@ class OrchestratorV2:
                 self.tag_manager.add('params_found', source='orchestrator', confidence='medium')
             else:
                 (processed_dir / output_files['parameters']).write_text('[]')
+
+        # Handle discovered_paths / interesting_paths (Phase 6) — parse ffuf and merge to all_urls
+        if 'discovered_paths' in output_files or 'interesting_paths' in output_files:
+            ffuf_paths = set()
+            ffuf_path = output_dir / 'raw' / 'ffuf.json'
+            if ffuf_path.exists():
+                try:
+                    with open(ffuf_path) as f:
+                        data = json.load(f)
+                        for result in data.get('results', []):
+                            if 'url' in result:
+                                ffuf_paths.add(result['url'])
+                except Exception:
+                    pass
+
+            if ffuf_paths:
+                if 'discovered_paths' in output_files:
+                    with open(processed_dir / output_files['discovered_paths'], 'w') as f:
+                        json.dump(list(ffuf_paths), f, indent=2)
+                
+                if 'interesting_paths' in output_files:
+                    with open(processed_dir / output_files['interesting_paths'], 'w') as f:
+                        f.write('\n'.join(sorted(ffuf_paths)) + '\n')
+                        
+                # Aggressively append these directly to all_urls.txt so Phase 7 scanners hit them!
+                all_urls_path = processed_dir / 'all_urls.txt'
+                if all_urls_path.exists():
+                    existing_urls = set()
+                    try:
+                        with open(all_urls_path) as f:
+                            existing_urls = set(line.strip() for line in f if line.strip())
+                    except Exception:
+                        pass
+                    
+                    new_urls = ffuf_paths - existing_urls
+                    if new_urls:
+                        with open(all_urls_path, 'a') as f:
+                            f.write('\n' + '\n'.join(sorted(new_urls)) + '\n')
+                        logger.success(f"Injected {len(new_urls)} FFuF paths into all_urls.txt for vuln scanning")
+
+                logger.success(f"Processed {len(ffuf_paths)} directory paths from FFuF")
 
 
 def main():

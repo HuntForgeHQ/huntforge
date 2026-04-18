@@ -9,6 +9,7 @@
 import os
 import subprocess
 import shutil
+from pathlib import Path
 from core.exceptions import (
     BinaryNotFoundError,
     EmptyOutputError,
@@ -17,6 +18,25 @@ from core.exceptions import (
     DockerNotRunningError
 )
 from core.docker_runner import DockerRunner
+
+# ── Ensure Go / tool binary directories are always in PATH ──────────
+# When running inside the Docker container (especially as root),
+# Go binaries installed to /go/bin may not be on PATH.
+# We fix this once at import time so every shutil.which() call works.
+_EXTRA_BIN_PATHS = [
+    '/go/bin',
+    '/usr/local/go/bin',
+    os.path.expanduser('~/go/bin'),
+    '/home/huntforge/go/bin',
+    '/home/huntforge/.local/bin',
+    os.path.expanduser('~/.local/bin'),
+]
+
+_current_path = os.environ.get('PATH', '')
+for _p in _EXTRA_BIN_PATHS:
+    if os.path.isdir(_p) and _p not in _current_path:
+        os.environ['PATH'] = _p + os.pathsep + os.environ.get('PATH', '')
+        _current_path = os.environ['PATH']
 
 
 class BaseModule:
@@ -234,11 +254,15 @@ class BaseModule:
             return runner.run()
         else:
             # ── Direct mode: already inside container, run locally ─────
-            if not (os.path.isabs(tool_binary) and os.path.isfile(tool_binary)) and not shutil.which(tool_binary):
+            resolved = self._find_binary(tool_binary)
+            if not resolved:
                 raise BinaryNotFoundError(
                     f"'{tool_binary}' is not installed or not in PATH.",
                     tool=tool_binary
                 )
+            # If we found it at an absolute path, rewrite command[0]
+            if resolved != tool_binary:
+                command[0] = resolved
 
             runner = SmartTimeoutV2(
                 command=command,
@@ -292,12 +316,33 @@ class BaseModule:
                 return default
         return value
 
-    def _to_container_path(self, host_path: str) -> str:
+    @staticmethod
+    def _find_binary(name: str) -> str:
         """
-        Convert a host filesystem path to a path usable inside the Docker container.
+        Locate a tool binary by name.
+        Returns the resolved path string, or '' if not found.
+        """
+        # 1. Already an absolute path that exists?
+        if os.path.isabs(name) and os.path.isfile(name) and os.access(name, os.X_OK):
+            return name
 
-        Replaces Windows backslashes with forward slashes. Full container path
-        mapping (e.g. C:\\Users\\... -> /output/...) requires knowing the mount
-        point, which is left to the caller or a future override.
+        # 2. Standard PATH lookup
+        found = shutil.which(name)
+        if found:
+            return found
+
+        # 3. Fallback: check common installation directories
+        for directory in _EXTRA_BIN_PATHS:
+            candidate = os.path.join(directory, name)
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                return candidate
+
+        return ''
+
+    def _to_container_path(self, path: str) -> str:
         """
-        return host_path.replace('\\', '/')
+        Convert a filesystem path to a format usable inside the Linux container.
+        """
+        if not path:
+            return ""
+        return os.path.normpath(path).replace('\\', '/')

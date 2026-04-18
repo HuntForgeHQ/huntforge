@@ -22,11 +22,14 @@ class BudgetTracker:
 
         self.requests_used = 0
         self.start_time = time.time()
+        import threading
+        self.lock = threading.Lock()
 
     def add_requests(self, count: int):
         """Add executed requests to the budget tracker."""
-        if count and count > 0:
-            self.requests_used += count
+        with self.lock:
+            if count and count > 0:
+                self.requests_used += count
 
     def within_limits(self, estimated_requests: int = 0) -> bool:
         """
@@ -45,42 +48,47 @@ class BudgetTracker:
                 )
 
         # Request check
-        if self.max_requests:
-            if self.requests_used >= self.max_requests:
-                raise BudgetExceededError(
-                    f"Scan request budget exhausted: {self.requests_used}/{self.max_requests} requests used."
-                )
+        with self.lock:
+            if self.max_requests:
+                if self.requests_used >= self.max_requests:
+                    raise BudgetExceededError(
+                        f"Scan request budget exhausted: {self.requests_used}/{self.max_requests} requests used."
+                    )
 
-            # Check if this tool would blow the budget
-            if self.requests_used + estimated_requests > self.max_requests:
-                return False
+                # Check if this tool would blow the budget
+                if self.requests_used + estimated_requests > self.max_requests:
+                    return False
 
         return True
 
     def log_status(self) -> dict:
         """Returns the current budget status for reporting."""
-        elapsed_mins = (time.time() - self.start_time) / 60
-        return {
-            "requests_used": self.requests_used,
-            "max_requests": self.max_requests,
-            "elapsed_minutes": round(elapsed_mins, 2),
-            "max_time_minutes": self.max_time_minutes,
-            "time_budget_remaining_mins": self.max_time_minutes - elapsed_mins if self.max_time_minutes else None,
-            "request_budget_remaining": self.max_requests - self.requests_used if self.max_requests else None
-        }
+        with self.lock:
+            elapsed_mins = (time.time() - self.start_time) / 60
+            return {
+                "requests_used": self.requests_used,
+                "max_requests": self.max_requests,
+                "elapsed_minutes": round(elapsed_mins, 2),
+                "max_time_minutes": self.max_time_minutes,
+                "time_budget_remaining_mins": self.max_time_minutes - elapsed_mins if self.max_time_minutes else None,
+                "request_budget_remaining": self.max_requests - self.requests_used if self.max_requests else None
+            }
 
     def get_status(self) -> dict:
         """Returns a dashboard-friendly status dict."""
-        elapsed_seconds = time.time() - self.start_time
-        remaining = (self.max_requests - self.requests_used) if self.max_requests else None
-        percent_used = (self.requests_used / self.max_requests * 100) if self.max_requests else None
-        return {
-            "requests_made": self.requests_used,
-            "max_requests": self.max_requests,
-            "remaining_requests": remaining,
-            "elapsed_seconds": round(elapsed_seconds, 2),
-            "percent_used": round(percent_used, 2) if percent_used is not None else None,
-        }
+        with self.lock:
+            elapsed_seconds = time.time() - self.start_time
+            elapsed_minutes = elapsed_seconds / 60
+            remaining = (self.max_requests - self.requests_used) if self.max_requests else None
+            percent_used = (self.requests_used / self.max_requests * 100) if self.max_requests else None
+            return {
+                "requests_used": self.requests_used,
+                "max_requests": self.max_requests,
+                "remaining_requests": remaining,
+                "elapsed_seconds": round(elapsed_seconds, 2),
+                "elapsed_minutes": round(elapsed_minutes, 2),
+                "percent_used": round(percent_used, 2) if percent_used is not None else None,
+            }
 
     def save_to_file(self, output_dir: str):
         """Writes budget status to output/<domain>/processed/budget_status.json."""
@@ -94,8 +102,9 @@ class BudgetTracker:
 
     def reset(self):
         """Resets request count and timer for resuming scans."""
-        self.requests_used = 0
-        self.start_time = time.time()
+        with self.lock:
+            self.requests_used = 0
+            self.start_time = time.time()
 
     def __repr__(self) -> str:
         s = f"BudgetTracker(requests: {self.requests_used}"

@@ -181,6 +181,18 @@ cython_debug/
 # Learn more at https://abstra.io/docs
 .abstra/
 
+# HuntForge Specific
+output/
+results/
+scratch/
+checkpoint.json
+budget_status.json
+db.sqlite3
+active_tags.json
+*.jsonl
+*.log
+
+
 # Visual Studio Code
 #  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
 #  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore

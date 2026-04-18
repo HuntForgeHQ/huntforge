@@ -13,7 +13,7 @@ class WpscanModule(BaseModule):
         self.config = config or {}
 
         host_out = os.path.join(output_dir, 'raw', 'wpscan.json')
-        container_out = host_out.replace('\\', '/')
+        container_out = self._to_container_path(host_out)
         os.makedirs(os.path.dirname(host_out), exist_ok=True)
 
         cmd = self.build_command(target, container_out)

@@ -12,7 +12,7 @@ class WappalyzerModule(BaseModule):
         self.config = config or {}
 
         host_output_file = os.path.join(output_dir, 'raw', 'wappalyzer.json')
-        container_output_file = host_output_file.replace('\\', '/')
+        container_output_file = self._to_container_path(host_output_file)
         os.makedirs(os.path.dirname(host_output_file), exist_ok=True)
 
         httpx_json_path = os.path.join(output_dir, 'raw', 'httpx.json')

@@ -335,11 +335,11 @@ phases:
 
       - tool: paramspider
         always: true
-        binary: "python3"
+        binary: "paramspider"
         weight: light
         timeout: 180
         output_file: "raw/paramspider.txt"
-        default_flags: "paramspider.py -d {domain} -o {output_file}"
+        default_flags: "-d {domain} -o {output_file}"
         extra_args: ""
         config:
           level: "high"
@@ -420,7 +420,7 @@ phases:
         default_flags: "-u https://{domain}/FUZZ -w {wordlist} -o {output_file} -of json -mc 200,201,301,302,307,308,401,403,405 -t 50 -ac -s"
         extra_args: ""
         config:
-          wordlist: "~/.huntforge/wordlists/directories/raft-medium-words.txt"
+          wordlist: "/usr/share/dirb/wordlists/common.txt"
           threads: 50
           rate_limit: null
           match_codes: "200,201,204,301,302,307,308,401,403,405"

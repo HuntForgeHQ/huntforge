@@ -11,18 +11,18 @@ class NaabuModule(BaseModule):
         self.config = config or {}
 
         host_output_file = os.path.join(output_dir, 'raw', 'naabu.txt')
-        container_output_file = host_output_file.replace('\\', '/')
+        container_output_file = self._to_container_path(host_output_file)
         os.makedirs(os.path.dirname(host_output_file), exist_ok=True)
 
         # If subdomains file is provided, use -list mode
         if subdomains_file and os.path.exists(subdomains_file):
-            container_input = subdomains_file.replace('\\', '/')
+            container_input = self._to_container_path(subdomains_file)
             cmd = ['naabu', '-list', container_input, '-o', container_output_file, '-silent']
         else:
             # Fallback: check processed/all_subdomains.txt
             subs_file = os.path.join(output_dir, 'processed', 'all_subdomains.txt')
             if os.path.exists(subs_file):
-                container_input = subs_file.replace('\\', '/')
+                container_input = self._to_container_path(subs_file)
                 cmd = ['naabu', '-list', container_input, '-o', container_output_file, '-silent']
             else:
                 cmd = self.build_command(target, container_output_file)

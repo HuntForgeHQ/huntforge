@@ -1,45 +1,180 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>HuntForge Dashboard</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HuntForge - Target Framework</title>
+    <!-- Google Fonts for typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <div class="container">
-        <h1>HuntForge Dashboard</h1>
-        <div class="card">
-            <h2>Recent Scans</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Domain</th>
-                        <th>Status</th>
-                        <th>Tags Discovered</th>
-                        <th>Start Time</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                {% for scan in scans %}
-                    <tr>
-                        <td>{{ scan.id }}</td>
-                        <td><strong>{{ scan.domain }}</strong></td>
-                        <td>
-                            <span class="status {% if scan.status == 'RUNNING' %}status-running{% elif scan.status == 'COMPLETED' or scan.status == 'DONE' %}status-done{% elif scan.status == 'FAILED' or scan.status == 'ERROR' %}status-failed{% else %}status-running{% endif %}">
-                                {{ scan.status }}
-                            </span>
-                        </td>
-                        <td>{{ scan.tag_count or '?' }}</td>
-                        <td>{{ scan.start_time }}</td>
-                        <td><a href="/scan/{{ scan.id }}">View Details</a></td>
-                    </tr>
-                {% else %}
-                    <tr><td colspan="6" class="empty-state"><p>No scans recorded yet.</p></td></tr>
-                {% endfor %}
-                </tbody>
-            </table>
-        </div>
+    <!-- Abstract background -->
+    <div class="bg-abstract bg-blob-1"></div>
+    <div class="bg-abstract bg-blob-2"></div>
+    
+    <div class="container relative z-10">
+        <header class="header">
+            <div class="brand">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                </div>
+                <h1>HuntForge <span class="badge">PRO</span></h1>
+            </div>
+            
+            <div class="stats-overview">
+                <div class="stat-card glass box-glow">
+                    <span class="stat-label">Total Targets</span>
+                    <span class="stat-value text-accent">{{ stats.total_targets if stats else 0 }}</span>
+                </div>
+                <div class="stat-card glass">
+                    <span class="stat-label">Active Scans</span>
+                    <span class="stat-value text-warning">{{ stats.active_scans if stats else 0 }}</span>
+                </div>
+                <div class="stat-card glass">
+                    <span class="stat-label">Tags Discovered</span>
+                    <span class="stat-value text-success">{{ stats.total_tags if stats else 0 }}</span>
+                </div>
+            </div>
+        </header>
+
+        <section class="dashboard-grid">
+            <div class="card glass box-glow chart-card">
+                <h2>Scan Status Distribution</h2>
+                <div class="chart-container">
+                    <canvas id="statusChart"></canvas>
+                </div>
+            </div>
+            
+            <div class="card glass chart-card">
+                <h2>Recent Activity Feed</h2>
+                <div class="activity-feed">
+                    {% for scan in scans[:5] %}
+                    <div class="activity-item">
+                        <div class="activity-icon {% if scan.status == 'COMPLETED' %}bg-success-light text-success{% elif scan.status == 'FAILED' %}bg-critical-light text-critical{% elif scan.status == 'RUNNING' %}bg-warning-light text-warning pulse{% else %}bg-info-light text-info{% endif %}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                        </div>
+                        <div class="activity-content">
+                            <strong class="text-primary">{{ scan.domain }}</strong>
+                            <p class="text-sm text-secondary">
+                                Scan <span class="status-text-{{ scan.status|lower }}">{{ scan.status }}</span> • Discovered {{ scan.tag_count or 0 }} tags
+                            </p>
+                        </div>
+                        <span class="activity-time text-xs">{{ scan.start_time.split()[0] if scan.start_time else '' }}</span>
+                    </div>
+                    {% else %}
+                    <div class="empty-state">No activity found.</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+
+        <section class="scan-history">
+            <div class="card glass">
+                <div class="card-header">
+                    <h2>Full Scan Register</h2>
+                </div>
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Scan ID</th>
+                                <th>Target Domain</th>
+                                <th>Status</th>
+                                <th>Tags</th>
+                                <th>Initiated</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for scan in scans %}
+                            <tr class="table-row-hover">
+                                <td><span class="id-badge">#{{ scan.id }}</span></td>
+                                <td><strong class="domain-text">{{ scan.domain }}</strong></td>
+                                <td>
+                                    <span class="status status-{{ scan.status|lower }}">
+                                        <span class="status-dot"></span>
+                                        {{ scan.status }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if scan.tag_count %}
+                                        <span class="count-badge">{{ scan.tag_count }}</span>
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td><span class="time-text">{{ scan.start_time }}</span></td>
+                                <td>
+                                    <a href="/scan/{{ scan.id }}" class="btn btn-outline btn-sm">
+                                        Analyze Process
+                                    </a>
+                                </td>
+                            </tr>
+                        {% else %}
+                            <tr><td colspan="6" class="empty-state"><div class="empty-icon">🛡️</div><p>No reconnaissance scans have been executed yet.</p></td></tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
     </div>
+
+    <!-- Chart Configuration Script -->
+    <script>
+        {% if stats %}
+        const statusData = {{ stats.status_counts | tojson }};
+        const ctx = document.getElementById('statusChart').getContext('2d');
+        
+        Chart.defaults.color = '#94a3b8';
+        Chart.defaults.font.family = 'Inter, sans-serif';
+
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Completed', 'Running', 'Failed', 'Interrupted'],
+                datasets: [{
+                    data: [
+                        statusData.COMPLETED || 0, 
+                        statusData.RUNNING || 0, 
+                        statusData.FAILED || 0,
+                        statusData.INTERRUPTED || 0
+                    ],
+                    backgroundColor: [
+                        'rgba(0, 255, 136, 0.8)',
+                        'rgba(255, 170, 0, 0.8)',
+                        'rgba(255, 68, 68, 0.8)',
+                        'rgba(148, 163, 184, 0.8)'
+                    ],
+                    borderColor: [
+                        '#00ff88',
+                        '#ffaa00',
+                        '#ff4444',
+                        '#94a3b8'
+                    ],
+                    borderWidth: 1,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '75%',
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            padding: 20,
+                            usePointStyle: true,
+                            pointStyle: 'circle'
+                        }
+                    }
+                }
+            }
+        });
+        {% endif %}
+    </script>
 </body>
 </html>

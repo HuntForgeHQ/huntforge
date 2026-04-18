@@ -28,9 +28,15 @@ class SQLMapModule(BaseModule):
 
         sqlmap_output_dir = os.path.join(output_dir, 'raw', 'sqlmap_output')
         os.makedirs(sqlmap_output_dir, exist_ok=True)
-        container_sqlmap_output = sqlmap_output_dir.replace('\\', '/')
+        container_sqlmap_output = self._to_container_path(sqlmap_output_dir)
 
-        params_file = os.path.join(output_dir, 'processed', 'parameters.json')
+        if 'parameters' in kwargs and os.path.exists(kwargs['parameters']):
+            params_file = kwargs['parameters']
+        elif 'all_urls' in kwargs and os.path.exists(kwargs['all_urls']):
+            params_file = kwargs['all_urls']
+        else:
+            params_file = os.path.join(output_dir, 'processed', 'parameters.json')
+            
         container_params_file = None
 
         if os.path.exists(params_file):
@@ -50,7 +56,7 @@ class SQLMapModule(BaseModule):
                     urls_file = os.path.join(output_dir, 'raw', 'sqlmap_urls.txt')
                     with open(urls_file, 'w') as f:
                         f.write('\n'.join(urls[:20]))
-                    container_params_file = urls_file.replace('\\', '/')
+                    container_params_file = self._to_container_path(urls_file)
             except (json.JSONDecodeError, KeyError):
                 pass
 

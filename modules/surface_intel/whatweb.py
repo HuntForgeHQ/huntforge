@@ -11,7 +11,7 @@ class WhatWebModule(BaseModule):
         self.config = config or {}
 
         host_output_file = os.path.join(output_dir, 'raw', 'whatweb.json')
-        container_output_file = host_output_file.replace('\\', '/')
+        container_output_file = self._to_container_path(host_output_file)
         os.makedirs(os.path.dirname(host_output_file), exist_ok=True)
 
         # Check if we have httpx.json (JSON lines) from previous phase
@@ -44,7 +44,7 @@ class WhatWebModule(BaseModule):
                 urls_txt_path = os.path.join(output_dir, 'raw', 'httpx_urls.txt')
                 with open(urls_txt_path, 'w') as f:
                     f.write('\n'.join(urls) + '\n')
-                container_input = urls_txt_path.replace('\\', '/')
+                container_input = self._to_container_path(urls_txt_path)
                 command = ['whatweb', '--input-file', container_input, '--log-json', container_output_file, '-q']
             else:
                 # No URLs extracted, fallback to scanning the domain directly

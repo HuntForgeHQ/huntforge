@@ -1,3 +1,4 @@
+import glob
 import os
 import json
 from modules.base_module import BaseModule
@@ -5,15 +6,30 @@ from core.exceptions import EmptyOutputError
 
 
 class GauModule(BaseModule):
-    def build_command(self, target: str, container_out: str) -> list:
-        return ['gau', '--domain', target, '-o', container_out, '--threads', '5']
+    def build_command(self, target: str = '', output_file: str = '', domains=None) -> list:
+        cmd = ['gau']
+        if domains:
+            cmd.extend(domains)
+        elif target:
+            cmd.append(target)
+
+        providers = self._cfg('providers')
+        if providers:
+            cmd.extend(['--providers', providers])
+        threads = self._cfg('threads', 5)
+        cmd.extend(['--threads', str(threads)])
+        blacklist = self._cfg('blacklist')
+        if blacklist:
+            cmd.extend(['--blacklist', blacklist])
+        return cmd
 
     def run(self, target: str, output_dir: str, tag_manager, config: dict = None,
             live_hosts: str = None, live_hosts_txt: str = None, **kwargs) -> dict:
         self.config = config or {}
 
         host_out = os.path.join(output_dir, 'raw', 'gau.txt')
-        container_out = host_out.replace('\\', '/')
+        container_out = self._to_container_path(host_out)
+
         os.makedirs(os.path.dirname(host_out), exist_ok=True)
 
         input_file = None
@@ -30,26 +46,31 @@ class GauModule(BaseModule):
             except (json.JSONDecodeError, Exception):
                 pass
 
+        for old in glob.glob(os.path.join(output_dir, 'raw', 'gau_*.txt')):
+            try:
+                os.remove(old)
+            except OSError:
+                pass
+
         if input_file:
             with open(input_file) as f:
                 domains = [line.strip() for line in f if line.strip()]
-            all_urls = []
-            for domain in domains:
-                domain_out = os.path.join(output_dir, 'raw', f'gau_{domain}.txt')
-                container_domain_out = domain_out.replace('\\', '/')
-                cmd = ['gau', '--domain', domain, '-o', container_domain_out, '--threads', '5']
-                try:
-                    self._run_subprocess(cmd, output_file=domain_out)
-                    content = self._read_output_file(domain_out)
-                    all_urls.extend(line for line in content.splitlines() if line.strip())
-                except Exception:
-                    continue
-            with open(host_out, 'w') as f:
-                f.write('\n'.join(all_urls))
-            urls = all_urls
+
+            cmd = self.build_command(output_file=container_out, domains=domains)
+            stdout = self._run_subprocess(cmd, output_file=host_out)
+            if stdout:
+                with open(host_out, 'w', encoding='utf-8') as f:
+                    f.write(stdout)
+            try:
+                urls = [l for l in self._read_output_file(host_out).splitlines() if l.strip()]
+            except EmptyOutputError:
+                urls = []
         else:
-            cmd = self.build_command(target, container_out)
-            self._run_subprocess(cmd, output_file=host_out)
+            cmd = self.build_command(target=target, output_file=container_out)
+            stdout = self._run_subprocess(cmd, output_file=host_out)
+            if stdout:
+                with open(host_out, 'w', encoding='utf-8') as f:
+                    f.write(stdout)
             try:
                 urls = [l for l in self._read_output_file(host_out).splitlines() if l.strip()]
             except EmptyOutputError:

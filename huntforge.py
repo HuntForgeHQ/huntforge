@@ -114,7 +114,7 @@ def handle_ai_prompt(prompt):
 # Scan Execution
 # --------------------------------------------------------
 
-def run_scan(domain, methodology_path):
+def run_scan(domain, methodology_path, only_phase=None, override_input_file=None):
     if not os.path.exists(methodology_path):
         console.print(
             f"[red]Methodology file not found:[/red] {methodology_path}"
@@ -150,13 +150,16 @@ def run_scan(domain, methodology_path):
     console.print("\n[cyan]Launching HuntForge Orchestrator[/cyan]\n")
 
     history = ScanHistory()
-    scan_id = history.record_start(domain, f"output/{domain}")
+    output_dir = os.path.abspath(f"output/{domain}")
+    scan_id = history.record_start(domain, output_dir)
     status = "FAILED"
 
     try:
         orch = Orchestrator(
             domain=domain,
             methodology_path=methodology_path,
+            only_phase=only_phase,
+            override_input_file=override_input_file
         )
         orch.run()
         status = "COMPLETED"
@@ -267,7 +270,8 @@ def resume_scan(domain):
         )
 
     history = ScanHistory()
-    scan_id = history.record_start(domain, f"output/{domain}")
+    output_dir = os.path.abspath(f"output/{domain}")
+    scan_id = history.record_start(domain, output_dir)
     status = "FAILED"
 
     try:
@@ -345,6 +349,11 @@ def build_parser():
         help="Path to YAML methodology file"
     )
 
+    # precision
+    precision = sub.add_parser("precision", help="Run a precision vulnerability strike")
+    precision.add_argument("domain")
+    precision.add_argument("--file", required=True, help="Target list file override")
+
     # ai
     ai = sub.add_parser("ai", help="Generate scan methodology using AI")
     ai.add_argument("prompt", help="Instruction prompt for AI")
@@ -387,6 +396,14 @@ def main():
         run_scan(
             domain=args.domain,
             methodology_path=args.methodology,
+        )
+        
+    elif args.command == "precision":
+        run_scan(
+            domain=args.domain,
+            methodology_path=DEFAULT_METHOD,
+            only_phase="phase_7_vuln_scan",
+            override_input_file=args.file,
         )
 
     elif args.command == "ai":

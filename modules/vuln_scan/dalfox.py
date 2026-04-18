@@ -11,14 +11,19 @@ class DalfoxModule(BaseModule):
         self.config = config or {}
 
         host_out = os.path.join(output_dir, 'raw', 'dalfox.txt')
-        container_out = host_out.replace('\\', '/')
+        container_out = self._to_container_path(host_out)
         os.makedirs(os.path.dirname(host_out), exist_ok=True)
 
-        # Use paramspider output if available for file-based scanning
-        params_file = os.path.join(output_dir, 'raw', 'paramspider.txt')
+        # Use override input if available for precision targeting
+        if 'all_urls' in kwargs and os.path.exists(kwargs['all_urls']):
+            params_file = kwargs['all_urls']
+        elif 'parameters' in kwargs and os.path.exists(kwargs['parameters']):
+            params_file = kwargs['parameters']
+        else:
+            params_file = os.path.join(output_dir, 'raw', 'paramspider.txt')
 
         if os.path.exists(params_file):
-            container_input = params_file.replace('\\', '/')
+            container_input = self._to_container_path(params_file)
             cmd = ['dalfox', 'file', container_input, '-o', container_out, '--silence']
         else:
             cmd = self.build_command(f'https://{target}', container_out)

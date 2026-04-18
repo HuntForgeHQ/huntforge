@@ -20,10 +20,13 @@ RUN apt-get update && apt-get install -y \
     sqlmap \
     nikto \
     whatweb \
+    seclists \
+    dirb \
     golang \
     pipx \
     nodejs \
     npm \
+    libpcap-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install global NPM packages
@@ -42,24 +45,26 @@ USER huntforge
 WORKDIR /home/huntforge
 
 # Install Go-based tools (these go to $GOPATH/bin which is in PATH)
-RUN go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest \
-    && go install -v github.com/owasp-amass/amass/v3/...@v3.18.3 \
-    && go install -v github.com/tomnomnom/assetfinder@latest \
-    && go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest \
-    && go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest \
-    && go install -v github.com/projectdiscovery/dnsx/cmd/dnsx@latest \
-    && go install -v github.com/projectdiscovery/katana/cmd/katana@latest \
-    && go install -v github.com/lc/gau/v2/cmd/gau@latest \
-    && go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest \
-    && go install -v github.com/hahwul/dalfox/v2@latest \
-    && go install -v github.com/ethicalhackingplayground/paramspider/cmd/paramspider@latest \
-    && go install -v github.com/jaeles-project/gospider@latest \
-    && go install -v github.com/haccer/subjack/v2/cmd/subjack@latest \
+# Note: continuing on error if a specific tool fails so the rest still install
+RUN go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest || true \
+    && go install -v github.com/owasp-amass/amass/v3/...@v3.18.3 || true \
+    && go install -v github.com/tomnomnom/assetfinder@latest || true \
+    && go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest || true \
+    && go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest || true \
+    && go install -v github.com/projectdiscovery/dnsx/cmd/dnsx@latest || true \
+    && go install -v github.com/projectdiscovery/katana/cmd/katana@latest || true \
+    && go install -v github.com/lc/gau/v2/cmd/gau@latest || true \
+    && go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest || true \
+    && go install -v github.com/hahwul/dalfox/v2@latest || true \
+    && go install -v github.com/jaeles-project/gospider@latest || true \
+    && go install -v github.com/haccer/subjack/v2/cmd/subjack@latest || true \
     && nuclei -update-templates 2>/dev/null || true
 
 # Install Python tools for the user
 RUN pip3 install --user --upgrade pip setuptools wheel 2>&1 | grep -v "WARNING" || true \
-    && pip3 install --user srcscan 2>/dev/null || true
+    && pip3 install --user srcscan 2>/dev/null || true \
+    && pipx install git+https://github.com/devanshbatham/paramspider.git || true \
+    && cp -r /home/huntforge/.local/bin/paramspider /usr/local/bin/ || true
 
 # Verify installations
 RUN echo "Installed tools:" \
