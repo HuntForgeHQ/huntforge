@@ -9,4 +9,8 @@ psutil==5.9.8
 # HuntForge Dashboard
 Flask==3.0.3
 
+# Report Rendering
+markdown==3.7
+pygments==2.18.0
+
 # AI — OpenRouter API (uses requests)

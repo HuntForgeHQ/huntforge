@@ -32,9 +32,9 @@ RUN apt-get update && apt-get install -y \
 # Install global NPM packages
 RUN npm install -g wappalyzer
 
-# Setup Go environment
+# Setup Go and local binary environment
 ENV GOPATH=/go
-ENV PATH=$PATH:/usr/local/go/bin:$GOPATH/bin
+ENV PATH=$PATH:/usr/local/go/bin:$GOPATH/bin:/home/huntforge/.local/bin
 
 # Create non-root user
 RUN useradd -m -s /bin/bash -u 1000 huntforge \
@@ -61,10 +61,9 @@ RUN go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest 
     && nuclei -update-templates 2>/dev/null || true
 
 # Install Python tools for the user
-RUN pip3 install --user --upgrade pip setuptools wheel 2>&1 | grep -v "WARNING" || true \
-    && pip3 install --user srcscan 2>/dev/null || true \
-    && pipx install git+https://github.com/devanshbatham/paramspider.git || true \
-    && cp -r /home/huntforge/.local/bin/paramspider /usr/local/bin/ || true
+RUN pip3 install --user --break-system-packages --upgrade pip setuptools wheel 2>&1 | grep -v "WARNING" || true \
+    && pip3 install --user --break-system-packages srcscan 2>/dev/null || true \
+    && pipx install git+https://github.com/devanshbatham/paramspider.git || true
 
 # Verify installations
 RUN echo "Installed tools:" \

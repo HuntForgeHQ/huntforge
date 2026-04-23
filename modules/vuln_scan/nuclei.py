@@ -21,6 +21,13 @@ class NucleiModule(BaseModule):
         if tags:
             cmd += ['-tags', tags]
 
+        templates = self._cfg('templates')
+        if templates:
+            cmd += ['-t', templates]
+        else:
+            # Use automatic scan when no templates specified
+            cmd += ['-automatic-scan']
+
         return cmd
 
     def run(self, target: str, output_dir: str, tag_manager, config: dict = None, **kwargs) -> dict:
@@ -52,6 +59,11 @@ class NucleiModule(BaseModule):
             tags = self._cfg('tags')
             if tags:
                 command += ['-tags', tags]
+            templates = self._cfg('templates')
+            if templates:
+                command += ['-t', templates]
+            else:
+                command += ['-automatic-scan']
         else:
             command = self.build_command(target, container_output_file)
 

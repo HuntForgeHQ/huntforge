@@ -3,17 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HuntForge - Target Framework</title>
-    <!-- Google Fonts for typography -->
+    <title>HuntForge — Reconnaissance Command Center</title>
+    <meta name="description" content="HuntForge AI-Powered Bug Bounty Reconnaissance Framework Dashboard">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-    <!-- Abstract background -->
     <div class="bg-abstract bg-blob-1"></div>
     <div class="bg-abstract bg-blob-2"></div>
-    
+
     <div class="container relative z-10">
         <header class="header">
             <div class="brand">
@@ -22,19 +21,25 @@
                 </div>
                 <h1>HuntForge <span class="badge">PRO</span></h1>
             </div>
-            
-            <div class="stats-overview">
-                <div class="stat-card glass box-glow">
-                    <span class="stat-label">Total Targets</span>
-                    <span class="stat-value text-accent">{{ stats.total_targets if stats else 0 }}</span>
+
+            <div style="display:flex;align-items:center;gap:1rem">
+                <div id="connStatus" class="conn-status">
+                    <span class="conn-dot"></span>
+                    <span id="connText">Polling</span>
                 </div>
-                <div class="stat-card glass">
-                    <span class="stat-label">Active Scans</span>
-                    <span class="stat-value text-warning">{{ stats.active_scans if stats else 0 }}</span>
-                </div>
-                <div class="stat-card glass">
-                    <span class="stat-label">Tags Discovered</span>
-                    <span class="stat-value text-success">{{ stats.total_tags if stats else 0 }}</span>
+                <div class="stats-overview">
+                    <div class="stat-card glass box-glow">
+                        <span class="stat-label">Targets</span>
+                        <span class="stat-value text-accent" id="statTargets">{{ stats.total_targets }}</span>
+                    </div>
+                    <div class="stat-card glass">
+                        <span class="stat-label">Active</span>
+                        <span class="stat-value text-warning" id="statActive">{{ stats.active_scans }}</span>
+                    </div>
+                    <div class="stat-card glass">
+                        <span class="stat-label">Tags</span>
+                        <span class="stat-value text-success" id="statTags">{{ stats.total_tags }}</span>
+                    </div>
                 </div>
             </div>
         </header>
@@ -46,25 +51,29 @@
                     <canvas id="statusChart"></canvas>
                 </div>
             </div>
-            
+
             <div class="card glass chart-card">
                 <h2>Recent Activity Feed</h2>
-                <div class="activity-feed">
-                    {% for scan in scans[:5] %}
-                    <div class="activity-item">
+                <div class="activity-feed" id="activityFeed">
+                    {% for scan in scans[:8] %}
+                    <div class="activity-item animate-in" style="animation-delay:{{ loop.index0 * 0.05 }}s">
                         <div class="activity-icon {% if scan.status == 'COMPLETED' %}bg-success-light text-success{% elif scan.status == 'FAILED' %}bg-critical-light text-critical{% elif scan.status == 'RUNNING' %}bg-warning-light text-warning pulse{% else %}bg-info-light text-info{% endif %}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
                         </div>
                         <div class="activity-content">
                             <strong class="text-primary">{{ scan.domain }}</strong>
                             <p class="text-sm text-secondary">
-                                Scan <span class="status-text-{{ scan.status|lower }}">{{ scan.status }}</span> • Discovered {{ scan.tag_count or 0 }} tags
+                                {% if scan.status == 'RUNNING' and scan.current_tool %}
+                                    Running <span class="text-warning">{{ scan.current_tool }}</span> · Phase {{ scan.current_phase or '?' }}
+                                {% else %}
+                                    <span class="status-text-{{ scan.status|lower }}">{{ scan.status }}</span> · {{ scan.tag_count or 0 }} tags
+                                {% endif %}
                             </p>
                         </div>
-                        <span class="activity-time text-xs">{{ scan.start_time.split()[0] if scan.start_time else '' }}</span>
+                        <span class="activity-time text-xs">{{ scan.start_time[:10] if scan.start_time else '' }}</span>
                     </div>
                     {% else %}
-                    <div class="empty-state">No activity found.</div>
+                    <div class="empty-state">No scans recorded yet. Run <code>huntforge scan &lt;domain&gt;</code></div>
                     {% endfor %}
                 </div>
             </div>
@@ -76,20 +85,21 @@
                     <h2>Full Scan Register</h2>
                 </div>
                 <div class="table-responsive">
-                    <table class="data-table">
+                    <table class="data-table" id="scanTable">
                         <thead>
                             <tr>
-                                <th>Scan ID</th>
-                                <th>Target Domain</th>
+                                <th>ID</th>
+                                <th>Target</th>
                                 <th>Status</th>
+                                <th>Progress</th>
                                 <th>Tags</th>
-                                <th>Initiated</th>
+                                <th>Started</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="scanTableBody">
                         {% for scan in scans %}
-                            <tr class="table-row-hover">
+                            <tr class="table-row-hover" id="scan-row-{{ scan.id }}">
                                 <td><span class="id-badge">#{{ scan.id }}</span></td>
                                 <td><strong class="domain-text">{{ scan.domain }}</strong></td>
                                 <td>
@@ -99,21 +109,24 @@
                                     </span>
                                 </td>
                                 <td>
-                                    {% if scan.tag_count %}
-                                        <span class="count-badge">{{ scan.tag_count }}</span>
+                                    {% if scan.status == 'RUNNING' %}
+                                        <span class="text-sm text-warning">{{ scan.current_tool or 'initializing' }}</span>
+                                    {% elif scan.status == 'COMPLETED' %}
+                                        <span class="text-sm text-success">✓ Done</span>
                                     {% else %}
-                                        <span class="text-muted">-</span>
+                                        <span class="text-sm text-muted">—</span>
                                     {% endif %}
                                 </td>
-                                <td><span class="time-text">{{ scan.start_time }}</span></td>
                                 <td>
-                                    <a href="/scan/{{ scan.id }}" class="btn btn-outline btn-sm">
-                                        Analyze Process
-                                    </a>
+                                    {% if scan.tag_count %}<span class="count-badge">{{ scan.tag_count }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+                                </td>
+                                <td><span class="time-text">{{ scan.start_time[:19] if scan.start_time else '' }}</span></td>
+                                <td>
+                                    <a href="/scan/{{ scan.id }}" class="btn btn-outline btn-sm">Analyze</a>
                                 </td>
                             </tr>
                         {% else %}
-                            <tr><td colspan="6" class="empty-state"><div class="empty-icon">🛡️</div><p>No reconnaissance scans have been executed yet.</p></td></tr>
+                            <tr><td colspan="7" class="empty-state"><div class="empty-icon">🛡️</div><p>No scans executed yet.</p></td></tr>
                         {% endfor %}
                         </tbody>
                     </table>
@@ -122,59 +135,74 @@
         </section>
     </div>
 
-    <!-- Chart Configuration Script -->
     <script>
+        // ── Chart ──
         {% if stats %}
         const statusData = {{ stats.status_counts | tojson }};
         const ctx = document.getElementById('statusChart').getContext('2d');
-        
-        Chart.defaults.color = '#94a3b8';
+        Chart.defaults.color = '#8b9dc3';
         Chart.defaults.font.family = 'Inter, sans-serif';
 
-        new Chart(ctx, {
+        const chart = new Chart(ctx, {
             type: 'doughnut',
             data: {
                 labels: ['Completed', 'Running', 'Failed', 'Interrupted'],
                 datasets: [{
-                    data: [
-                        statusData.COMPLETED || 0, 
-                        statusData.RUNNING || 0, 
-                        statusData.FAILED || 0,
-                        statusData.INTERRUPTED || 0
-                    ],
-                    backgroundColor: [
-                        'rgba(0, 255, 136, 0.8)',
-                        'rgba(255, 170, 0, 0.8)',
-                        'rgba(255, 68, 68, 0.8)',
-                        'rgba(148, 163, 184, 0.8)'
-                    ],
-                    borderColor: [
-                        '#00ff88',
-                        '#ffaa00',
-                        '#ff4444',
-                        '#94a3b8'
-                    ],
-                    borderWidth: 1,
-                    hoverOffset: 4
+                    data: [statusData.COMPLETED||0, statusData.RUNNING||0, statusData.FAILED||0, statusData.INTERRUPTED||0],
+                    backgroundColor: ['rgba(0,255,136,.8)','rgba(255,184,77,.8)','rgba(255,51,102,.8)','rgba(74,86,128,.8)'],
+                    borderColor: ['#00ff88','#ffb84d','#ff3366','#4a5680'],
+                    borderWidth: 1, hoverOffset: 4
                 }]
             },
             options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                cutout: '75%',
+                responsive: true, maintainAspectRatio: false, cutout: '72%',
                 plugins: {
-                    legend: {
-                        position: 'right',
-                        labels: {
-                            padding: 20,
-                            usePointStyle: true,
-                            pointStyle: 'circle'
-                        }
-                    }
+                    legend: { position:'right', labels:{ padding:16, usePointStyle:true, pointStyle:'circle', font:{size:11} } }
                 }
             }
         });
         {% endif %}
+
+        // ── Real-Time Polling ──
+        let pollInterval = null;
+        function startPolling() {
+            const conn = document.getElementById('connStatus');
+            const connText = document.getElementById('connText');
+            conn.classList.add('connected');
+            connText.textContent = 'Live';
+
+            pollInterval = setInterval(async () => {
+                try {
+                    const res = await fetch('/api/scans');
+                    const scans = await res.json();
+                    updateDashboard(scans);
+                } catch(e) {
+                    conn.classList.remove('connected');
+                    connText.textContent = 'Disconnected';
+                }
+            }, 3000);
+        }
+
+        function updateDashboard(scans) {
+            let active = 0, tags = 0, targets = new Set(), counts = {COMPLETED:0,FAILED:0,RUNNING:0,INTERRUPTED:0};
+            scans.forEach(s => {
+                targets.add(s.domain);
+                if(s.status==='RUNNING') active++;
+                tags += (s.tag_count||0);
+                if(counts[s.status] !== undefined) counts[s.status]++;
+            });
+
+            document.getElementById('statTargets').textContent = targets.size;
+            document.getElementById('statActive').textContent = active;
+            document.getElementById('statTags').textContent = tags;
+
+            {% if stats %}
+            chart.data.datasets[0].data = [counts.COMPLETED, counts.RUNNING, counts.FAILED, counts.INTERRUPTED];
+            chart.update('none');
+            {% endif %}
+        }
+
+        startPolling();
     </script>
 </body>
 </html>

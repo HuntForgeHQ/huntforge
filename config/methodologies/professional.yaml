@@ -510,6 +510,7 @@ phases:
         extra_args: ""
         config:
           severity: "critical,high"
+          templates: "default-logins,exposures/tokens"
 
       - tool: subjack
         always: true

@@ -159,7 +159,8 @@ def run_scan(domain, methodology_path, only_phase=None, override_input_file=None
             domain=domain,
             methodology_path=methodology_path,
             only_phase=only_phase,
-            override_input_file=override_input_file
+            override_input_file=override_input_file,
+            scan_id=scan_id
         )
         orch.run()
         status = "COMPLETED"
@@ -209,6 +210,14 @@ def run_scan(domain, methodology_path, only_phase=None, override_input_file=None
     finally:
         tag_count = len(orch.tag_manager.get_all()) if 'orch' in locals() else 0
         history.record_end(scan_id, status, tag_count)
+
+    # Auto-generate AI report on successful completion
+    if status == "COMPLETED":
+        console.print("\n[cyan]━━━ Auto-Generating AI Report ━━━[/cyan]")
+        try:
+            generate_report(domain)
+        except Exception as e:
+            console.print(f"[yellow]Report generation skipped:[/yellow] {e}")
 
 
 # --------------------------------------------------------
@@ -279,6 +288,7 @@ def resume_scan(domain):
             domain=domain,
             methodology_path=methodology_path,
             checkpoint_file=checkpoint_file,
+            scan_id=scan_id
         )
         orch.run()
         status = "COMPLETED"

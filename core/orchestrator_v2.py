@@ -139,13 +139,15 @@ class OrchestratorV2:
 
     def __init__(self, domain: str, methodology_path: str,
                  checkpoint_file: Optional[str] = None, adaptive: bool = True,
-                 only_phase: Optional[str] = None, override_input_file: Optional[str] = None):
+                 only_phase: Optional[str] = None, override_input_file: Optional[str] = None,
+                 scan_id: Optional[int] = None):
         self.domain = domain
         self.adaptive = adaptive
         self.only_phase = only_phase
         self.override_input_file = override_input_file
         self.methodology_path = Path(methodology_path)
         self.checkpoint_file = checkpoint_file or f"output/{domain}/checkpoint.json"
+        self.scan_id = scan_id  # Dashboard tracking ID
 
         # Load methodology
         with open(self.methodology_path) as f:
@@ -168,9 +170,11 @@ class OrchestratorV2:
         # Runtime state
         self.completed_tools: List[Dict[str, Any]] = []
         self.current_phase = None
+        self.current_tool = None
         self.scan_start_time = None
         self._shutdown = False
         self.lock = threading.Lock()
+        self._total_tools_count = 0
 
         # Signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._handle_signal)
@@ -254,6 +258,10 @@ class OrchestratorV2:
         phase_label = phase_config.get('label', phase_name)
         logger.info(f"Starting phase: {phase_label}")
         self.current_phase = phase_name
+        self.current_tool = None
+
+        # Broadcast phase start to dashboard
+        self._broadcast_live_state(phase=phase_name, tool=None, status='phase_running')
 
         self.logger.phase_start(phase_name, phase_label)
 
@@ -325,6 +333,8 @@ class OrchestratorV2:
                     tool_config.update(decision.suggested_parameters)
 
                 logger.info(f"Starting {tool_name} (params: {decision.suggested_parameters or 'default'})")
+                self.current_tool = tool_name
+                self._broadcast_live_state(phase=phase_name, tool=tool_name, status='tool_running')
                 self._run_tool(tool_name, tool_info['_class'], tool_config, phase_config)
                 return 'success'
             except Exception as e:
@@ -473,6 +483,13 @@ class OrchestratorV2:
             # Save checkpoint
             self.save_checkpoint()
 
+            # Broadcast tool completion to dashboard
+            completed_count = len([t for t in self.completed_tools if t.get('status') == 'completed'])
+            self._broadcast_live_state(
+                phase=self.current_phase, tool=tool_name, status='tool_complete',
+                tools_completed=completed_count
+            )
+
             logger.success(f"{tool_name} completed in {elapsed:.1f}s")
 
         except Exception as e:
@@ -512,10 +529,65 @@ class OrchestratorV2:
                 logger.warning(f"Input file not found: {full_path}")
         return input_mapping
 
+    def _broadcast_live_state(self, phase: str = None, tool: str = None,
+                               status: str = 'running', tools_completed: int = None):
+        """Write live scan state to disk and update DB for dashboard consumption."""
+        try:
+            state = {
+                'domain': self.domain,
+                'scan_id': self.scan_id,
+                'phase': phase or self.current_phase,
+                'tool': tool or self.current_tool,
+                'status': status,
+                'tools_completed': tools_completed or len([t for t in self.completed_tools if t.get('status') == 'completed']),
+                'tools_failed': len([t for t in self.completed_tools if t.get('status') == 'failed']),
+                'tools_total': self._total_tools_count,
+                'elapsed_seconds': round(time.time() - self.scan_start_time, 1) if self.scan_start_time else 0,
+                'tags_count': self.tag_manager.count(),
+                'budget': self.budget_tracker.get_status(),
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            }
+
+            state_path = Path(f"output/{self.domain}/live_state.json")
+            state_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(state_path, 'w') as f:
+                json.dump(state, f, indent=2)
+
+            # Also update the SQLite DB for dashboard polling
+            if self.scan_id:
+                self.scan_history.update_progress(
+                    self.scan_id,
+                    phase=phase or self.current_phase,
+                    tool=tool or self.current_tool,
+                    tools_completed=state['tools_completed'],
+                    tools_total=self._total_tools_count
+                )
+        except Exception as e:
+            logger.debug(f"Failed to broadcast live state: {e}")
+
+    def _count_total_tools(self) -> int:
+        """Count total tools across all phases for progress calculation."""
+        total = 0
+        phases = self.methodology.get('phases', {})
+        for phase_name, phase_config in phases.items():
+            if self.only_phase and phase_name != self.only_phase:
+                continue
+            tools = phase_config.get('tools') or phase_config.get('conditional_tools') or []
+            for tool_entry in tools:
+                if isinstance(tool_entry, dict):
+                    tool_name = tool_entry.get('tool') or tool_entry.get('name')
+                    if tool_name and tool_name in TOOL_REGISTRY:
+                        if tool_entry.get('enabled', True) is not False:
+                            total += 1
+                elif tool_entry in TOOL_REGISTRY:
+                    total += 1
+        return total
+
     def run(self):
         """Main execution loop"""
         logger.info(f"Starting HuntForge scan for {self.domain}")
         self.scan_start_time = time.time()
+        self._total_tools_count = self._count_total_tools()
 
         # Try to resume from checkpoint
         if self.checkpoint_file:
@@ -568,6 +640,9 @@ class OrchestratorV2:
         # Scan complete
         elapsed = time.time() - self.scan_start_time
         logger.success(f"Scan completed in {elapsed/3600:.1f} hours")
+
+        # Final live state broadcast
+        self._broadcast_live_state(status='completed')
 
         # Save budget status before final checkpoint
         self.budget_tracker.save_to_file(f"output/{self.domain}")
